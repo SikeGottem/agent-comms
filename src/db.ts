@@ -113,6 +113,20 @@ async function initDB() {
   try { await db.execute('ALTER TABLE tasks ADD COLUMN required_capabilities TEXT'); } catch {}
   try { await db.execute('ALTER TABLE channels ADD COLUMN topic TEXT'); } catch {}
   try { await db.execute('ALTER TABLE channels ADD COLUMN pinned_context TEXT'); } catch {}
+  try { await db.execute('ALTER TABLE channels ADD COLUMN is_private INTEGER DEFAULT 0'); } catch {}
+  try { await db.execute('ALTER TABLE channels ADD COLUMN invite_code TEXT UNIQUE'); } catch {}
+  try { await db.execute('ALTER TABLE channels ADD COLUMN created_by TEXT'); } catch {}
+
+  // Channel members table for private channels
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS channel_members (
+      channel_id TEXT NOT NULL,
+      agent_id TEXT NOT NULL,
+      role TEXT DEFAULT 'member',
+      joined_at INTEGER,
+      PRIMARY KEY (channel_id, agent_id)
+    )
+  `);
 
   // Seed default channel
   const existing = await db.execute({ sql: 'SELECT id FROM channels WHERE id = ?', args: ['general'] });

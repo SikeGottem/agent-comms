@@ -4,6 +4,7 @@ import db from '../db.js';
 import { sseConnections } from './stream.js';
 import type { Message, MessagePriority } from '../types.js';
 import { invalidateUnreadCache } from '../cache.js';
+import { checkChannelAccess } from './channels.js';
 
 // Generic webhook notification
 async function notifyAgent(agentId: string, fromAgent: string, content: string) {
@@ -81,6 +82,12 @@ messages.post('/', async (c) => {
 
   if (!body.from_agent || !body.content) {
     return c.json({ error: 'from_agent and content are required' }, 400);
+  }
+
+  // Check private channel access
+  const msgChannel = body.channel ?? 'general';
+  if (!(await checkChannelAccess(msgChannel, body.from_agent))) {
+    return c.json({ error: 'Access denied: not a member of this private channel' }, 403);
   }
 
   // Parse @mentions
@@ -226,6 +233,13 @@ messages.post('/batch', async (c) => {
 // Poll messages
 messages.get('/', async (c) => {
   const channel = c.req.query('channel') ?? 'general';
+  const agentId = c.req.query('agent') || c.req.header('X-Agent-Id') || '';
+
+  // Check private channel access
+  if (!(await checkChannelAccess(channel, agentId))) {
+    return c.json({ error: 'Access denied: not a member of this private channel' }, 403);
+  }
+
   const since = c.req.query('since') ? Number(c.req.query('since')) : 0;
   const limit = c.req.query('limit') ? Math.min(Number(c.req.query('limit')), 200) : 50;
   const search = c.req.query('search');

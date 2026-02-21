@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import db from '../db.js';
 import type { SSEConnections } from '../types.js';
+import { checkChannelAccess } from './channels.js';
 
 export const sseConnections: SSEConnections = new Map();
 

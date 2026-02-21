@@ -195,21 +195,46 @@ tasks.patch('/batch', async (c) => {
   return c.json({ ok: true, results });
 });
 
+// Auto-archive: done for 24+ hours → archived
+async function autoArchive() {
+  const cutoff = Date.now() - 86_400_000;
+  await db.execute({
+    sql: "UPDATE tasks SET status = 'archived' WHERE status = 'done' AND completed_at IS NOT NULL AND completed_at < ?",
+    args: [cutoff],
+  });
+}
+
 // List tasks
 tasks.get('/', async (c) => {
+  await autoArchive();
+
   const status = c.req.query('status');
   const channel = c.req.query('channel');
   const priority = c.req.query('priority');
+  const includeArchived = c.req.query('include_archived') === 'true';
 
   let sql = 'SELECT * FROM tasks WHERE 1=1';
   const args: any[] = [];
 
   if (status) { sql += ' AND status = ?'; args.push(status); }
+  else if (!includeArchived) { sql += " AND status != 'archived'"; }
   if (channel) { sql += ' AND channel = ?'; args.push(channel); }
   if (priority) { sql += ' AND priority = ?'; args.push(priority); }
 
   sql += ' ORDER BY created_at DESC LIMIT 100';
 
+  const result = await db.execute({ sql, args });
+  return c.json(result.rows);
+});
+
+// Archived tasks
+tasks.get('/archived', async (c) => {
+  await autoArchive();
+  const channel = c.req.query('channel');
+  let sql = "SELECT * FROM tasks WHERE status = 'archived'";
+  const args: any[] = [];
+  if (channel) { sql += ' AND channel = ?'; args.push(channel); }
+  sql += ' ORDER BY completed_at DESC LIMIT 100';
   const result = await db.execute({ sql, args });
   return c.json(result.rows);
 });

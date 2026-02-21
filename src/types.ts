@@ -9,7 +9,8 @@ export type MessageType =
   | 'request'
   | 'response'
   | 'heartbeat'
-  | 'coordination';
+  | 'coordination'
+  | 'delegation';
 
 export type MessagePriority = 'low' | 'normal' | 'high' | 'urgent';
 
@@ -56,7 +57,7 @@ export interface Task {
   description: string | null;
   assigned_to: string | null;
   created_by: string;
-  status: 'pending' | 'in_progress' | 'done' | 'blocked';
+  status: 'pending' | 'in_progress' | 'done' | 'blocked' | 'archived';
   priority: 'low' | 'medium' | 'high' | 'urgent';
   channel: string;
   created_at: number;

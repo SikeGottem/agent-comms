@@ -145,6 +145,7 @@ pre.code-block code { color: #e1e1e1; }
 .task-status.in_progress { background: var(--blue); color: #fff; }
 .task-status.done { background: var(--green); color: #fff; }
 .task-status.blocked { background: var(--red); color: #fff; }
+.task-status.archived { background: #495057; color: #adb5bd; }
 .task-priority { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 10px; margin-left: 4px; }
 .task-priority.urgent { background: var(--red); color: #fff; }
 .task-priority.high { background: var(--orange); color: #fff; }
@@ -244,6 +245,7 @@ pre.code-block code { color: #e1e1e1; }
     <button class="task-filter-btn active" data-filter="all" onclick="filterTasks('all',this)">All</button>
     <button class="task-filter-btn" data-filter="ready" onclick="filterTasks('ready',this)">Ready</button>
     <button class="task-filter-btn" data-filter="blocked" onclick="filterTasks('blocked',this)">Blocked</button>
+    <button class="task-filter-btn" data-filter="archived" onclick="filterTasks('archived',this)">📦 Archived</button>
   </div>
   <div id="task-form">
     <input type="text" id="task-title" placeholder="Task title">
@@ -509,10 +511,13 @@ function closeSummary() {
 function toggleTasks() { document.getElementById('task-panel').classList.toggle('show'); }
 function toggleTaskForm() { document.getElementById('task-form').classList.toggle('show'); }
 
+let showArchived = false;
 async function loadTasks() {
   let url = '/tasks?channel=' + channel;
-  if (taskFilter === 'ready') url = '/tasks/ready';
+  if (taskFilter === 'archived') url = '/tasks/archived?channel=' + channel;
+  else if (taskFilter === 'ready') url = '/tasks/ready';
   else if (taskFilter === 'blocked') url = '/tasks/blocked';
+  else if (showArchived) url += '&include_archived=true';
 
   const res = await fetch(url, { headers: H });
   const tasks = await res.json();
@@ -557,7 +562,7 @@ async function createTask() {
   loadTasks();
 }
 
-const statusCycle = { pending: 'in_progress', in_progress: 'done', done: 'pending', blocked: 'pending' };
+const statusCycle = { pending: 'in_progress', in_progress: 'done', done: 'pending', blocked: 'pending', archived: 'pending' };
 async function cycleTaskStatus(id, current) {
   const next = statusCycle[current] || 'pending';
   await fetch('/tasks/' + id, { method: 'PATCH', headers: H, body: JSON.stringify({ status: next, updated_by: myId }) });

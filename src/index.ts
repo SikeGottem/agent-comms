@@ -21,6 +21,7 @@ import presenceRoutes from './routes/presence.js';
 import batchRoutes from './routes/batch.js';
 import { knowledgeRoutes, fileRoutes } from './routes/knowledge.js';
 import workflowRoutes from './routes/workflows.js';
+import delegationRoutes from './routes/delegations.js';
 import { dashboardHTML } from './dashboard.js';
 import db from './db.js';
 
@@ -44,7 +45,7 @@ app.get('/', (c) => c.json({
   name: 'agent-comms',
   version: '0.3.0',
   status: 'running',
-  endpoints: ['/agents', '/messages', '/channels', '/stream', '/tasks', '/memory', '/sync', '/contexts', '/health', '/admin', '/analytics', '/events', '/presence', '/batch', '/knowledge', '/files', '/workflows'],
+  endpoints: ['/agents', '/messages', '/channels', '/stream', '/tasks', '/memory', '/sync', '/contexts', '/health', '/admin', '/analytics', '/events', '/presence', '/batch', '/knowledge', '/files', '/workflows', '/delegations'],
 }));
 
 // Health (no auth)
@@ -85,6 +86,7 @@ app.use('/events/*', authMiddleware);
 app.use('/presence/*', authMiddleware);
 app.use('/batch/*', authMiddleware);
 app.use('/workflows/*', authMiddleware);
+app.use('/delegations/*', authMiddleware);
 
 app.route('/agents', agentRoutes);
 app.route('/messages', messageRoutes);
@@ -100,6 +102,7 @@ app.route('/batch', batchRoutes);
 app.route('/knowledge', knowledgeRoutes);
 app.route('/files', fileRoutes);
 app.route('/workflows', workflowRoutes);
+app.route('/delegations', delegationRoutes);
 
 const port = Number(process.env.PORT) || 3141;
 console.log(`🚀 agent-comms v0.3.0 running on http://localhost:${port}`);
