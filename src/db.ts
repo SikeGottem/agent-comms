@@ -1,8 +1,18 @@
 import { createClient } from '@libsql/client';
+import { mkdirSync } from 'fs';
+
+const dbUrl = process.env.TURSO_DB_URL || process.env.TURSO_URL || 'file:data/agent-comms.db';
+
+// Ensure local data dir exists for file-based fallback
+if (dbUrl.startsWith('file:')) {
+  mkdirSync('data', { recursive: true });
+}
+
+console.log(`[db] Connecting to: ${dbUrl.startsWith('libsql') ? dbUrl.split('.')[0] + '...' : dbUrl}`);
 
 const db = createClient({
-  url: process.env.TURSO_DB_URL || 'file:data/agent-comms.db',
-  authToken: process.env.TURSO_AUTH_TOKEN,
+  url: dbUrl,
+  authToken: process.env.TURSO_AUTH_TOKEN || process.env.TURSO_TOKEN,
 });
 
 // Initialize schema
