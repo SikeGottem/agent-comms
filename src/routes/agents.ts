@@ -3,7 +3,6 @@ import db from '../db.js';
 
 const agents = new Hono();
 
-// Register a new agent
 agents.post('/register', async (c) => {
   const body = await c.req.json<{ id: string; name: string; platform?: string; webhook_url?: string; metadata?: Record<string, unknown> }>();
   if (!body.id || !body.name) {
@@ -11,36 +10,41 @@ agents.post('/register', async (c) => {
   }
 
   const now = Date.now();
-  db.prepare(`
-    INSERT INTO agents (id, name, platform, last_seen_at, metadata, webhook_url)
-    VALUES (?, ?, ?, ?, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET name = ?, platform = ?, last_seen_at = ?, metadata = ?, webhook_url = ?
-  `).run(
-    body.id, body.name, body.platform ?? null, now, body.metadata ? JSON.stringify(body.metadata) : null, body.webhook_url ?? null,
-    body.name, body.platform ?? null, now, body.metadata ? JSON.stringify(body.metadata) : null, body.webhook_url ?? null
-  );
+  const meta = body.metadata ? JSON.stringify(body.metadata) : null;
+
+  // Check if exists
+  const existing = await db.execute({ sql: 'SELECT id FROM agents WHERE id = ?', args: [body.id] });
+  if (existing.rows.length > 0) {
+    await db.execute({
+      sql: 'UPDATE agents SET name = ?, platform = ?, last_seen_at = ?, metadata = ?, webhook_url = ? WHERE id = ?',
+      args: [body.name, body.platform ?? null, now, meta, body.webhook_url ?? null, body.id],
+    });
+  } else {
+    await db.execute({
+      sql: 'INSERT INTO agents (id, name, platform, last_seen_at, metadata, webhook_url) VALUES (?, ?, ?, ?, ?, ?)',
+      args: [body.id, body.name, body.platform ?? null, now, meta, body.webhook_url ?? null],
+    });
+  }
 
   return c.json({ ok: true, agent: { id: body.id, name: body.name, platform: body.platform ?? null, webhook_url: body.webhook_url ?? null } }, 201);
 });
 
-// List all agents
-agents.get('/', (c) => {
-  const ONLINE_THRESHOLD = 60_000; // 60s
+agents.get('/', async (c) => {
+  const ONLINE_THRESHOLD = 60_000;
   const now = Date.now();
-  const rows = db.prepare('SELECT * FROM agents').all() as any[];
-  const result = rows.map(a => ({
+  const result = await db.execute('SELECT * FROM agents');
+  const rows = result.rows.map((a: any) => ({
     ...a,
     metadata: a.metadata ? JSON.parse(a.metadata) : null,
-    online: a.last_seen_at ? (now - a.last_seen_at) < ONLINE_THRESHOLD : false,
+    online: a.last_seen_at ? (now - Number(a.last_seen_at)) < ONLINE_THRESHOLD : false,
   }));
-  return c.json(result);
+  return c.json(rows);
 });
 
-// Heartbeat
-agents.post('/:id/heartbeat', (c) => {
+agents.post('/:id/heartbeat', async (c) => {
   const id = c.req.param('id');
-  const result = db.prepare('UPDATE agents SET last_seen_at = ? WHERE id = ?').run(Date.now(), id);
-  if (result.changes === 0) {
+  const result = await db.execute({ sql: 'UPDATE agents SET last_seen_at = ? WHERE id = ?', args: [Date.now(), id] });
+  if (result.rowsAffected === 0) {
     return c.json({ error: 'Agent not found' }, 404);
   }
   return c.json({ ok: true });

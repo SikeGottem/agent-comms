@@ -6,7 +6,8 @@ import type { Message } from '../types.js';
 
 // Generic webhook notification — reads webhook_url from agent registration
 async function notifyAgent(agentId: string, fromAgent: string, content: string) {
-  const agent = db.prepare('SELECT webhook_url FROM agents WHERE id = ?').get(agentId) as any;
+  const result = await db.execute({ sql: 'SELECT webhook_url FROM agents WHERE id = ?', args: [agentId] });
+  const agent = result.rows[0] as any;
   if (!agent?.webhook_url) return;
 
   const preview = content.length > 200 ? content.slice(0, 200) + '...' : content;
@@ -28,10 +29,9 @@ async function notifyAgent(agentId: string, fromAgent: string, content: string) 
   }
 }
 
-// Also notify all agents with webhooks for broadcast messages
-function getWebhookAgents(): string[] {
-  const rows = db.prepare('SELECT id FROM agents WHERE webhook_url IS NOT NULL').all() as any[];
-  return rows.map(r => r.id);
+async function getWebhookAgents(): Promise<string[]> {
+  const result = await db.execute('SELECT id FROM agents WHERE webhook_url IS NOT NULL');
+  return result.rows.map((r: any) => r.id);
 }
 
 const messages = new Hono();
@@ -64,20 +64,17 @@ messages.post('/', async (c) => {
     read_at: null,
   };
 
-  db.prepare(`
-    INSERT INTO messages (id, from_agent, to_agent, channel, type, content, metadata, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(msg.id, msg.from_agent, msg.to_agent, msg.channel, msg.type, msg.content, msg.metadata, msg.created_at);
+  await db.execute({
+    sql: 'INSERT INTO messages (id, from_agent, to_agent, channel, type, content, metadata, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    args: [msg.id, msg.from_agent, msg.to_agent, msg.channel, msg.type, msg.content, msg.metadata, msg.created_at],
+  });
 
   // Push to SSE connections
   const payload = JSON.stringify(msg);
-
   if (msg.to_agent) {
-    // Direct message — push to recipient
     const conns = sseConnections.get(msg.to_agent);
     conns?.forEach(send => send(payload));
   } else {
-    // Channel/broadcast — push to all connected agents except sender
     for (const [agentId, conns] of sseConnections) {
       if (agentId !== msg.from_agent) {
         conns.forEach(send => send(payload));
@@ -85,15 +82,15 @@ messages.post('/', async (c) => {
     }
   }
 
-  // Also update sender's last_seen_at
-  db.prepare('UPDATE agents SET last_seen_at = ? WHERE id = ?').run(Date.now(), msg.from_agent);
+  // Update sender's last_seen_at
+  await db.execute({ sql: 'UPDATE agents SET last_seen_at = ? WHERE id = ?', args: [Date.now(), msg.from_agent] });
 
   // Notify agents via webhooks (fire and forget)
   if (msg.to_agent) {
     notifyAgent(msg.to_agent, msg.from_agent, msg.content);
   } else {
-    // Broadcast — notify all agents with webhooks except sender
-    for (const agentId of getWebhookAgents()) {
+    const webhookAgents = await getWebhookAgents();
+    for (const agentId of webhookAgents) {
       if (agentId !== msg.from_agent) {
         notifyAgent(agentId, msg.from_agent, msg.content);
       }
@@ -104,16 +101,17 @@ messages.post('/', async (c) => {
 });
 
 // Poll messages
-messages.get('/', (c) => {
+messages.get('/', async (c) => {
   const channel = c.req.query('channel') ?? 'general';
   const since = c.req.query('since') ? Number(c.req.query('since')) : 0;
   const limit = c.req.query('limit') ? Math.min(Number(c.req.query('limit')), 200) : 50;
 
-  const rows = db.prepare(
-    'SELECT * FROM messages WHERE channel = ? AND created_at > ? ORDER BY created_at ASC LIMIT ?'
-  ).all(channel, since, limit);
+  const result = await db.execute({
+    sql: 'SELECT * FROM messages WHERE channel = ? AND created_at > ? ORDER BY created_at ASC LIMIT ?',
+    args: [channel, since, limit],
+  });
 
-  return c.json(rows);
+  return c.json(result.rows);
 });
 
 // Acknowledge / mark read
@@ -122,24 +120,25 @@ messages.post('/:id/ack', async (c) => {
   const body = await c.req.json<{ status?: 'delivered' | 'read' }>().catch(() => ({}));
   const status = (body as any)?.status ?? 'read';
   const col = status === 'delivered' ? 'delivered_at' : 'read_at';
-  const result = db.prepare(`UPDATE messages SET ${col} = ? WHERE id = ?`).run(Date.now(), id);
-  if (result.changes === 0) return c.json({ error: 'Message not found' }, 404);
+  const result = await db.execute({ sql: `UPDATE messages SET ${col} = ? WHERE id = ?`, args: [Date.now(), id] });
+  if (result.rowsAffected === 0) return c.json({ error: 'Message not found' }, 404);
   return c.json({ ok: true });
 });
 
 // Unread messages for an agent
-messages.get('/unread', (c) => {
+messages.get('/unread', async (c) => {
   const agentId = c.req.query('agent');
   if (!agentId) return c.json({ error: 'agent query param required' }, 400);
 
   // Update last_seen so polling agents show as online
-  db.prepare('UPDATE agents SET last_seen_at = ? WHERE id = ?').run(Date.now(), agentId);
+  await db.execute({ sql: 'UPDATE agents SET last_seen_at = ? WHERE id = ?', args: [Date.now(), agentId] });
 
-  const rows = db.prepare(
-    `SELECT * FROM messages WHERE (to_agent = ? OR (to_agent IS NULL AND from_agent != ?)) AND read_at IS NULL ORDER BY created_at ASC`
-  ).all(agentId, agentId);
+  const result = await db.execute({
+    sql: 'SELECT * FROM messages WHERE (to_agent = ? OR (to_agent IS NULL AND from_agent != ?)) AND read_at IS NULL ORDER BY created_at ASC',
+    args: [agentId, agentId],
+  });
 
-  return c.json(rows);
+  return c.json(result.rows);
 });
 
 export default messages;
