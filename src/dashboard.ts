@@ -192,6 +192,10 @@ pre.code-block code { color: #e1e1e1; }
   </div>
   <h2>Agents</h2>
   <div id="agent-list"></div>
+  <div class="sidebar-section" id="workflow-panel">
+    <h3 onclick="toggleWorkflows()">⚡ Workflows ▸</h3>
+    <div id="workflow-list" style="display:none"></div>
+  </div>
   <div id="memory-panel">
     <h3 onclick="toggleMemory()">🧠 Shared Memory ▸</h3>
     <div id="memory-entries"></div>
@@ -352,14 +356,23 @@ async function loadChannelTopic() {
 }
 
 async function loadAgents() {
-  const res = await fetch('/agents', { headers: H });
-  const agents = await res.json();
+  const [agentsRes, presenceRes] = await Promise.all([
+    fetch('/agents', { headers: H }),
+    fetch('/presence', { headers: H }).catch(() => ({ json: () => [] })),
+  ]);
+  const agents = await agentsRes.json();
+  const presenceList = await presenceRes.json();
+  const presenceMap = {};
+  (Array.isArray(presenceList) ? presenceList : []).forEach(p => { presenceMap[p.agent_id] = p; });
+
   const el = document.getElementById('agent-list');
   el.innerHTML = agents.map(a => {
-    const status = a.status || (a.online ? 'online' : 'offline');
-    const caps = a.capabilities ? a.capabilities.map(c => '<span class="cap-badge">' + esc(c) + '</span>').join('') : '';
-    const loadBadge = a.current_load > 0 ? '<span class="load-badge">' + a.current_load + ' tasks</span>' : '';
-    return '<div class="agent-item"><span class="dot ' + status + '"></span><span class="avatar">' + getAvatar(a.id) + '</span><span class="name">' + esc(a.name || a.id) + '</span>' + loadBadge + '<span class="platform">' + esc(a.platform || '') + '</span>' + (caps ? '<div class="cap-badges">' + caps + '</div>' : '') + '</div>';
+    const p = presenceMap[a.id];
+    const status = p ? (p.effective_status || p.status || 'offline') : (a.status || (a.online ? 'online' : 'offline'));
+    const statusText = p && p.status_text ? ' · ' + esc(p.status_text) : '';
+    const mood = p && p.mood ? ' ' + esc(p.mood) : '';
+    const taskBadge = a.current_load > 0 ? '<span class="task-badge">' + a.current_load + '</span>' : '';
+    return '<div class="agent-item"><span class="dot ' + esc(status) + '"></span><span class="avatar">' + getAvatar(a.id) + mood + '</span><span class="name">' + esc(a.name || a.id) + '<span style="font-size:10px;color:var(--text-dim)">' + statusText + '</span></span>' + taskBadge + '</div>';
   }).join('');
 }
 
@@ -560,6 +573,23 @@ async function loadMemory() {
 function toggleMemory() {
   document.getElementById('memory-entries').classList.toggle('show');
   loadMemory();
+}
+
+// Workflows
+async function loadWorkflows() {
+  try {
+    const res = await fetch('/workflows', { headers: H });
+    const all = await res.json();
+    const recent = (Array.isArray(all) ? all : []).slice(0, 5);
+    const el = document.getElementById('workflow-list');
+    if (!recent.length) { el.innerHTML = '<div style="font-size:11px;color:var(--text-dim);padding:4px 0">No workflows</div>'; return; }
+    el.innerHTML = recent.map(w => '<div class="wf-item"><span class="wf-status ' + esc(w.status) + '">' + esc(w.status) + '</span> ' + esc(w.name) + '</div>').join('');
+  } catch { }
+}
+function toggleWorkflows() {
+  const el = document.getElementById('workflow-list');
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+  loadWorkflows();
 }
 
 function sendTyping() {
