@@ -104,11 +104,19 @@ tasks.post('/', async (c) => {
     await db.execute({ sql: 'UPDATE agents SET current_load = current_load + 1 WHERE id = ?', args: [task.assigned_to] });
   }
 
+  // Broadcast task_created SSE event to ALL agents
+  const taskPayload = JSON.stringify({ type: 'task_created', task });
+  for (const [, conns] of sseConnections) {
+    conns.forEach(send => send(taskPayload, 'task_created'));
+  }
+
   // Auto-post message
   const msgId = uuid();
   const assignee = task.assigned_to ? ` → @${task.assigned_to}` : '';
   const autoAssigned = (!body.assigned_to && task.assigned_to) ? ' (auto-assigned)' : '';
-  const content = `📋 New task: **${task.title}**${assignee}${autoAssigned} [${task.priority}]`;
+  const desc = task.description ? ` — ${task.description}` : '';
+  const whoPicksUp = !task.assigned_to ? " Who's picking this up?" : '';
+  const content = `📋 New task: **${task.title}**${desc}${assignee}${autoAssigned} [${task.priority}]${whoPicksUp}`;
   await db.execute({
     sql: 'INSERT INTO messages (id, from_agent, to_agent, channel, type, content, metadata, created_at, priority) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
     args: [msgId, task.created_by, task.assigned_to, task.channel, 'task', content, JSON.stringify({ task_id: task.id }), now, 'normal'],
@@ -224,7 +232,13 @@ tasks.get('/', async (c) => {
   sql += ' ORDER BY created_at DESC LIMIT 100';
 
   const result = await db.execute({ sql, args });
-  return c.json(result.rows);
+  const now = Date.now();
+  const STALE_THRESHOLD = 10 * 60_000; // 10 minutes
+  const rows = result.rows.map((r: any) => ({
+    ...r,
+    stale: r.status === 'pending' && !r.assigned_to && (now - Number(r.created_at)) > STALE_THRESHOLD,
+  }));
+  return c.json(rows);
 });
 
 // Archived tasks
@@ -311,6 +325,99 @@ tasks.get('/mine', async (c) => {
     args: [agent, 'done'],
   });
   return c.json(result.rows);
+});
+
+// Claim a task
+tasks.post('/:id/claim', async (c) => {
+  const id = c.req.param('id');
+  const body = await c.req.json<{ agent_id: string }>();
+  if (!body.agent_id) return c.json({ error: 'agent_id is required' }, 400);
+
+  const result = await db.execute({ sql: 'SELECT * FROM tasks WHERE id = ?', args: [id] });
+  if (result.rows.length === 0) return c.json({ error: 'Task not found' }, 404);
+  const task = result.rows[0] as any;
+
+  if (task.status !== 'pending') {
+    return c.json({ error: `Cannot claim task in status '${task.status}'` }, 409);
+  }
+
+  const now = Date.now();
+  await db.execute({
+    sql: "UPDATE tasks SET assigned_to = ?, status = 'in_progress', updated_at = ? WHERE id = ?",
+    args: [body.agent_id, now, id],
+  });
+
+  // Update agent load
+  await db.execute({ sql: 'UPDATE agents SET current_load = current_load + 1 WHERE id = ?', args: [body.agent_id] });
+
+  // Broadcast task_claimed SSE event
+  const claimPayload = JSON.stringify({ type: 'task_claimed', task_id: id, agent_id: body.agent_id, title: task.title });
+  for (const [, conns] of sseConnections) {
+    conns.forEach(send => send(claimPayload, 'task_claimed'));
+  }
+
+  // Post message
+  const msgId = uuid();
+  const content = `✋ @${body.agent_id} claimed: **${task.title}**`;
+  await db.execute({
+    sql: 'INSERT INTO messages (id, from_agent, channel, type, content, metadata, created_at, priority) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    args: [msgId, body.agent_id, task.channel, 'task', content, JSON.stringify({ task_id: id }), now, 'normal'],
+  });
+  const msgPayload = JSON.stringify({ id: msgId, from_agent: body.agent_id, channel: task.channel, type: 'task', content, created_at: now });
+  for (const [, conns] of sseConnections) {
+    conns.forEach(send => send(msgPayload));
+  }
+
+  return c.json({ ok: true, task_id: id, claimed_by: body.agent_id });
+});
+
+// Complete a task
+tasks.post('/:id/complete', async (c) => {
+  const id = c.req.param('id');
+  const body = await c.req.json<{ agent_id?: string; output?: string }>().catch(() => ({}));
+
+  const result = await db.execute({ sql: 'SELECT * FROM tasks WHERE id = ?', args: [id] });
+  if (result.rows.length === 0) return c.json({ error: 'Task not found' }, 404);
+  const task = result.rows[0] as any;
+
+  if (task.status === 'done' || task.status === 'archived') {
+    return c.json({ error: 'Task already completed' }, 400);
+  }
+
+  const now = Date.now();
+  await db.execute({
+    sql: "UPDATE tasks SET status = 'done', completed_at = ?, updated_at = ? WHERE id = ?",
+    args: [now, now, id],
+  });
+
+  // Update agent load
+  if (task.assigned_to) {
+    await db.execute({ sql: 'UPDATE agents SET current_load = MAX(0, current_load - 1) WHERE id = ?', args: [task.assigned_to] });
+  }
+
+  // Notify dependents
+  await notifyDependents(id, task.title);
+
+  // Broadcast task_completed SSE event
+  const agent = (body as any).agent_id || task.assigned_to || 'system';
+  const completePayload = JSON.stringify({ type: 'task_completed', task_id: id, agent_id: agent, title: task.title, output: (body as any).output ?? null });
+  for (const [, conns] of sseConnections) {
+    conns.forEach(send => send(completePayload, 'task_completed'));
+  }
+
+  // Post message
+  const msgId = uuid();
+  const content = `✅ @${agent} completed: **${task.title}**`;
+  await db.execute({
+    sql: 'INSERT INTO messages (id, from_agent, channel, type, content, metadata, created_at, priority) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    args: [msgId, agent, task.channel, 'task', content, JSON.stringify({ task_id: id, output: (body as any).output ?? null }), now, 'normal'],
+  });
+  const msgPayload = JSON.stringify({ id: msgId, from_agent: agent, channel: task.channel, type: 'task', content, created_at: now });
+  for (const [, conns] of sseConnections) {
+    conns.forEach(send => send(msgPayload));
+  }
+
+  return c.json({ ok: true, task_id: id, completed_by: agent });
 });
 
 // Update task

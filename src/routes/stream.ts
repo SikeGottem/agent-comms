@@ -19,7 +19,15 @@ stream.get('/', async (c) => {
       sseConnections.set(agentId, new Set());
     }
 
-    const send = (data: string, event?: string) => {
+    const send = async (data: string, event?: string) => {
+      // Filter out private channel messages for non-members
+      try {
+        const parsed = JSON.parse(data);
+        if (parsed.channel) {
+          const hasAccess = await checkChannelAccess(parsed.channel, agentId);
+          if (!hasAccess) return;
+        }
+      } catch {}
       sse.writeSSE({ data, event: event || 'message' }).catch(() => {});
     };
 

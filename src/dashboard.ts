@@ -46,6 +46,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 /* Topic bar */
 #topic-bar { padding: 6px 16px; background: var(--bg3); border-bottom: 1px solid var(--border); font-size: 12px; color: var(--text-dim); display: none; }
 #topic-bar.show { display: block; }
+#member-bar.show { display: block !important; }
 #topic-bar .topic-text { color: var(--text); }
 
 #search-bar { padding: 8px 16px; border-bottom: 1px solid var(--border); background: var(--bg2); display: none; }
@@ -104,6 +105,18 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .type-broadcast .badge { background: var(--purple); color: #fff; }
 .type-heartbeat .badge { background: var(--green); color: #fff; }
 .type-coordination .badge { background: var(--yellow); color: #000; }
+.type-delegation .badge { background: var(--blue); color: #fff; }
+
+/* Delegation panel */
+.deleg-item { padding: 8px 16px; border-bottom: 1px solid var(--border); font-size: 12px; }
+.deleg-item .deleg-label { font-weight: 600; color: #fff; }
+.deleg-item .deleg-task { color: var(--text-dim); margin-top: 2px; }
+.deleg-status { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: 600; text-transform: uppercase; }
+.deleg-status.running { background: var(--blue); color: #fff; }
+.deleg-status.completed { background: var(--green); color: #fff; }
+.deleg-status.failed { background: var(--red); color: #fff; }
+.task-delegations { margin-top: 8px; padding: 6px 0; }
+.task-delegations .deleg-line { font-size: 11px; padding: 2px 0; }
 
 pre.code-block { background: var(--bg3); padding: 10px; border-radius: 6px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px; overflow-x: auto; margin-top: 4px; border: 1px solid var(--border); }
 pre.code-block code { color: #e1e1e1; }
@@ -146,6 +159,12 @@ pre.code-block code { color: #e1e1e1; }
 .task-status.done { background: var(--green); color: #fff; }
 .task-status.blocked { background: var(--red); color: #fff; }
 .task-status.archived { background: #495057; color: #adb5bd; }
+.task-item.stale { border-left: 3px solid var(--orange); background: rgba(230, 119, 0, 0.08); }
+.task-item.stale .task-title::before { content: ''; display: inline-block; width: 8px; height: 8px; background: var(--orange); border-radius: 50%; margin-right: 6px; animation: pulse-dot 1.5s infinite; }
+@keyframes pulse-dot { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.7); } }
+.task-item.unclaimed { border-left: 3px solid var(--accent); }
+.task-claimed-by { font-size: 10px; color: var(--accent); margin-top: 2px; }
+.task-item .task-done-check { color: var(--green); font-weight: bold; }
 .task-priority { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 10px; margin-left: 4px; }
 .task-priority.urgent { background: var(--red); color: #fff; }
 .task-priority.high { background: var(--orange); color: #fff; }
@@ -190,12 +209,19 @@ pre.code-block code { color: #e1e1e1; }
     <button class="ch-btn active" data-ch="general">general</button>
     <button class="ch-btn" data-ch="tasks">tasks</button>
     <button class="ch-btn" data-ch="alerts">alerts</button>
+    <div style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px">
+      <button class="ch-btn" onclick="showCreatePrivateChannel()" style="color:var(--accent);font-size:12px">🔒 + Private Channel</button>
+    </div>
   </div>
   <h2>Agents</h2>
   <div id="agent-list"></div>
   <div class="sidebar-section" id="workflow-panel">
     <h3 onclick="toggleWorkflows()">⚡ Workflows ▸</h3>
     <div id="workflow-list" style="display:none"></div>
+  </div>
+  <div class="sidebar-section" id="delegation-panel">
+    <h3 onclick="toggleDelegations()">🤖 Active Delegations ▸</h3>
+    <div id="delegation-list" style="display:none"></div>
   </div>
   <div id="memory-panel">
     <h3 onclick="toggleMemory()">🧠 Shared Memory ▸</h3>
@@ -210,6 +236,7 @@ pre.code-block code { color: #e1e1e1; }
     <button onclick="toggleTasks()">📝 Tasks</button>
   </div>
   <div id="topic-bar">📌 <span class="topic-text" id="topic-text"></span></div>
+  <div id="member-bar" class="member-bar" style="padding:4px 16px;background:var(--bg3);border-bottom:1px solid var(--border);font-size:11px;color:var(--text-dim);display:none"></div>
   <div id="search-bar"><input type="text" id="search-input" placeholder="Search messages..." oninput="searchMessages()"></div>
   <div id="pinned-area"><div class="pinned-label">📌 Pinned</div><div id="pinned-list"></div></div>
   <div id="messages"></div>
@@ -228,6 +255,7 @@ pre.code-block code { color: #e1e1e1; }
       <option value="broadcast">broadcast</option>
       <option value="heartbeat">heartbeat</option>
       <option value="coordination">coordination</option>
+      <option value="delegation">delegation</option>
     </select>
     <select id="msg-priority">
       <option value="normal">normal</option>
@@ -340,7 +368,78 @@ async function init() {
   loadTasks();
   loadMemory();
   loadChannelTopic();
+  loadChannels();
+  loadChannelMembers();
   document.getElementById('header').querySelector('.title').textContent = '# ' + channel + '  —  ' + myName;
+}
+
+// Load channels dynamically including private ones
+async function loadChannels() {
+  try {
+    const res = await fetch('/channels?agent=' + myId, { headers: H });
+    const chs = await res.json();
+    const container = document.getElementById('channels');
+    const btns = container.querySelectorAll('.ch-btn[data-ch]');
+    const existing = new Set();
+    btns.forEach(b => existing.add(b.dataset.ch));
+    chs.forEach(ch => {
+      if (!existing.has(ch.id)) {
+        const btn = document.createElement('button');
+        btn.className = 'ch-btn';
+        btn.dataset.ch = ch.id;
+        btn.textContent = (ch.is_private ? '🔒 ' : '') + ch.id;
+        btn.addEventListener('click', () => switchChannel(ch.id, btn));
+        // Insert before the private channel button div
+        const privDiv = container.querySelector('div');
+        container.insertBefore(btn, privDiv);
+      } else if (ch.is_private) {
+        // Update existing to show lock
+        btns.forEach(b => { if (b.dataset.ch === ch.id && !b.textContent.includes('🔒')) b.textContent = '🔒 ' + ch.id; });
+      }
+    });
+  } catch {}
+}
+
+function switchChannel(ch, btn) {
+  document.querySelectorAll('.ch-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  channel = ch;
+  document.getElementById('header').querySelector('.title').textContent = '# ' + channel + '  —  ' + myName;
+  loadMessages();
+  loadTasks();
+  loadChannelTopic();
+  loadChannelMembers();
+}
+
+async function loadChannelMembers() {
+  const memberArea = document.getElementById('member-bar');
+  try {
+    const chRes = await fetch('/channels/' + channel + '/summary', { headers: H });
+    const chData = await chRes.json();
+    if (!chData.is_private) { memberArea.classList.remove('show'); return; }
+    const res = await fetch('/channels/' + channel + '/members', { headers: H });
+    const members = await res.json();
+    const roleIcon = { owner: '👑', admin: '⭐', member: '' };
+    memberArea.innerHTML = '🔒 Members: ' + members.map(m => (roleIcon[m.role] || '') + m.agent_id).join(', ');
+    memberArea.classList.add('show');
+  } catch { memberArea.classList.remove('show'); }
+}
+
+function showCreatePrivateChannel() {
+  const name = prompt('Private channel name (e.g. secret-ops):');
+  if (!name) return;
+  const agents = prompt('Invite agents (comma-separated IDs, e.g. woozy,rusty):');
+  const allowed = agents ? agents.split(',').map(s => s.trim()).filter(Boolean) : [];
+  fetch('/channels', { method: 'POST', headers: H, body: JSON.stringify({
+    id: name.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
+    name: name,
+    is_private: true,
+    created_by: myId,
+    allowed_agents: allowed,
+  })}).then(r => r.json()).then(data => {
+    if (data.invite_code) alert('Channel created! Invite code: ' + data.invite_code);
+    loadChannels();
+  }).catch(e => alert('Error: ' + e));
 }
 
 async function loadChannelTopic() {
@@ -522,12 +621,35 @@ async function loadTasks() {
   const res = await fetch(url, { headers: H });
   const tasks = await res.json();
   const el = document.getElementById('task-list');
+  // Sort: stale/unclaimed first, then pending, in_progress, done, archived
+  const statusOrder = { pending: 0, in_progress: 1, done: 2, blocked: 1, archived: 3 };
+  tasks.sort((a, b) => {
+    if (a.stale && !b.stale) return -1;
+    if (!a.stale && b.stale) return 1;
+    if (!a.assigned_to && a.status === 'pending' && (b.assigned_to || b.status !== 'pending')) return -1;
+    if ((!b.assigned_to && b.status === 'pending') && (a.assigned_to || a.status !== 'pending')) return 1;
+    return (statusOrder[a.status] || 9) - (statusOrder[b.status] || 9);
+  });
   el.innerHTML = tasks.map(t => {
     const depsHtml = t.depends_on ? '<div class="task-deps">⛓ Depends on: ' + esc(t.depends_on) + '</div>' : '';
     const deadlineHtml = t.deadline ? '<div class="task-deadline">⏰ ' + fullTime(t.deadline) + '</div>' : '';
     const blockingHtml = t.blocking_deps !== undefined ? '<div class="task-deps" style="color:var(--red)">🚫 ' + t.blocking_deps + '/' + t.total_deps + ' deps blocking</div>' : '';
-    return '<div class="task-item" onclick="cycleTaskStatus(\\'' + t.id + '\\',\\'' + t.status + '\\')"><div class="task-title">' + esc(t.title) + '</div><div class="task-meta"><span class="task-status ' + t.status + '">' + t.status + '</span><span class="task-priority ' + t.priority + '">' + t.priority + '</span> → ' + esc(t.assigned_to || 'unassigned') + '</div>' + depsHtml + deadlineHtml + blockingHtml + '</div>';
+    const isStale = t.stale ? ' stale' : '';
+    const isUnclaimed = (!t.assigned_to && t.status === 'pending' && !t.stale) ? ' unclaimed' : '';
+    const claimedBy = (t.status === 'in_progress' && t.assigned_to) ? '<div class="task-claimed-by">✋ Claimed by ' + esc(t.assigned_to) + '</div>' : '';
+    const doneCheck = t.status === 'done' ? '<span class="task-done-check"> ✔</span>' : '';
+    const claimBtn = (t.status === 'pending' && !t.assigned_to) ? '<button onclick="event.stopPropagation();claimTask(\\'' + t.id + '\\')" style="background:var(--accent);border:none;border-radius:3px;padding:2px 8px;color:#fff;cursor:pointer;font-size:10px;margin-left:6px">Claim</button>' : '';
+    return '<div class="task-item' + isStale + isUnclaimed + '" onclick="cycleTaskStatus(\\'' + t.id + '\\',\\'' + t.status + '\\')"><div class="task-title">' + esc(t.title) + doneCheck + '</div><div class="task-meta"><span class="task-status ' + t.status + '">' + t.status + '</span><span class="task-priority ' + t.priority + '">' + t.priority + '</span> → ' + esc(t.assigned_to || 'unassigned') + claimBtn + '</div>' + claimedBy + depsHtml + deadlineHtml + blockingHtml + '<div class="task-delegations" id="deleg-' + t.id + '"></div></div>';
   }).join('') || '<div style="padding:16px;color:var(--text-dim);font-size:13px">No tasks</div>';
+  // Load delegations for each task
+  for (const t of tasks) {
+    fetch('/delegations?task_id=' + t.id, { headers: H }).then(r => r.json()).then(dels => {
+      const del_el = document.getElementById('deleg-' + t.id);
+      if (del_el && Array.isArray(dels) && dels.length) {
+        del_el.innerHTML = dels.map(d => '<div class="deleg-line"><span class="deleg-status ' + d.status + '">' + d.status + '</span> Delegated to: ' + (d.sub_agent_label || d.sub_agent_id) + '</div>').join('');
+      }
+    }).catch(() => {});
+  }
 }
 
 function filterTasks(filter, btn) {
@@ -563,9 +685,18 @@ async function createTask() {
 }
 
 const statusCycle = { pending: 'in_progress', in_progress: 'done', done: 'pending', blocked: 'pending', archived: 'pending' };
+async function claimTask(id) {
+  await fetch('/tasks/' + id + '/claim', { method: 'POST', headers: H, body: JSON.stringify({ agent_id: myId }) });
+  loadTasks();
+}
+
 async function cycleTaskStatus(id, current) {
-  const next = statusCycle[current] || 'pending';
-  await fetch('/tasks/' + id, { method: 'PATCH', headers: H, body: JSON.stringify({ status: next, updated_by: myId }) });
+  if (current === 'in_progress') {
+    await fetch('/tasks/' + id + '/complete', { method: 'POST', headers: H, body: JSON.stringify({ agent_id: myId }) });
+  } else {
+    const next = statusCycle[current] || 'pending';
+    await fetch('/tasks/' + id, { method: 'PATCH', headers: H, body: JSON.stringify({ status: next, updated_by: myId }) });
+  }
   loadTasks();
 }
 
@@ -595,6 +726,22 @@ function toggleWorkflows() {
   const el = document.getElementById('workflow-list');
   el.style.display = el.style.display === 'none' ? 'block' : 'none';
   loadWorkflows();
+}
+
+// Delegations
+async function loadDelegations() {
+  try {
+    const res = await fetch('/delegations/active', { headers: H });
+    const items = await res.json();
+    const el = document.getElementById('delegation-list');
+    if (!Array.isArray(items) || !items.length) { el.innerHTML = '<div style="font-size:11px;color:var(--text-dim);padding:4px 16px">No active delegations</div>'; return; }
+    el.innerHTML = items.map(d => '<div class="deleg-item"><span class="deleg-status ' + esc(d.status) + '">' + esc(d.status) + '</span> <span class="deleg-label">' + esc(d.sub_agent_label) + '</span><div class="deleg-task">' + esc(d.task_title || d.task_id) + '</div></div>').join('');
+  } catch { }
+}
+function toggleDelegations() {
+  const el = document.getElementById('delegation-list');
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+  loadDelegations();
 }
 
 function sendTyping() {
@@ -645,16 +792,8 @@ setInterval(pollNew, 3000);
 
 function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
 
-document.querySelectorAll('.ch-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.ch-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    channel = btn.dataset.ch;
-    document.getElementById('header').querySelector('.title').textContent = '# ' + channel + '  —  ' + myName;
-    loadMessages();
-    loadTasks();
-    loadChannelTopic();
-  });
+document.querySelectorAll('.ch-btn[data-ch]').forEach(btn => {
+  btn.addEventListener('click', () => switchChannel(btn.dataset.ch, btn));
 });
 
 async function sendMsg() {
