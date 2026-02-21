@@ -132,6 +132,9 @@ messages.get('/unread', (c) => {
   const agentId = c.req.query('agent');
   if (!agentId) return c.json({ error: 'agent query param required' }, 400);
 
+  // Update last_seen so polling agents show as online
+  db.prepare('UPDATE agents SET last_seen_at = ? WHERE id = ?').run(Date.now(), agentId);
+
   const rows = db.prepare(
     `SELECT * FROM messages WHERE (to_agent = ? OR (to_agent IS NULL AND from_agent != ?)) AND read_at IS NULL ORDER BY created_at ASC`
   ).all(agentId, agentId);
