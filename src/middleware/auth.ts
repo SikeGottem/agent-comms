@@ -6,7 +6,7 @@ const getValidKeys = (): Set<string> => {
 };
 
 export const authMiddleware = createMiddleware(async (c, next) => {
-  const key = c.req.header('X-Agent-Key');
+  const key = c.req.header('X-Agent-Key') || c.req.query('key');
   if (!key) {
     return c.json({ error: 'Missing X-Agent-Key header' }, 401);
   }

@@ -8,6 +8,7 @@ import agentRoutes from './routes/agents.js';
 import messageRoutes from './routes/messages.js';
 import channelRoutes from './routes/channels.js';
 import streamRoute from './routes/stream.js';
+import { dashboardHTML } from './dashboard.js';
 
 const app = new Hono();
 
@@ -21,6 +22,9 @@ app.get('/', (c) => c.json({
   status: 'running',
   endpoints: ['/agents', '/messages', '/channels', '/stream'],
 }));
+
+// Dashboard (no auth)
+app.get('/dashboard', (c) => c.html(dashboardHTML));
 
 // Auth for all API routes
 app.use('/agents/*', authMiddleware);
