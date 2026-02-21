@@ -1,7 +1,8 @@
 import { createMiddleware } from 'hono/factory';
 
+const DEFAULT_KEYS = 'key-agent-alpha,key-agent-beta,key-agent-gamma';
 const getValidKeys = (): Set<string> => {
-  const keys = process.env.AGENT_KEYS || '';
+  const keys = process.env.AGENT_KEYS || DEFAULT_KEYS;
   return new Set(keys.split(',').map(k => k.trim()).filter(Boolean));
 };
 
