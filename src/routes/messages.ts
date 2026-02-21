@@ -34,6 +34,13 @@ async function getWebhookAgents(): Promise<string[]> {
   return result.rows.map((r: any) => r.id);
 }
 
+// Parse @mentions from content
+function parseMentions(content: string): string[] {
+  const matches = content.match(/@([a-zA-Z0-9_-]+)/g);
+  if (!matches) return [];
+  return matches.map(m => m.slice(1));
+}
+
 const messages = new Hono();
 
 // Send a message
@@ -45,16 +52,24 @@ messages.post('/', async (c) => {
     type?: string;
     content: string;
     metadata?: Record<string, unknown>;
+    reply_to?: string;
   }>();
 
   if (!body.from_agent || !body.content) {
     return c.json({ error: 'from_agent and content are required' }, 400);
   }
 
+  // Parse @mentions - if mentioned, set to_agent
+  const mentions = parseMentions(body.content);
+  let toAgent = body.to_agent ?? null;
+  if (!toAgent && mentions.length > 0) {
+    toAgent = mentions[0];
+  }
+
   const msg: Message = {
     id: uuid(),
     from_agent: body.from_agent,
-    to_agent: body.to_agent ?? null,
+    to_agent: toAgent,
     channel: body.channel ?? 'general',
     type: (body.type as Message['type']) ?? 'chat',
     content: body.content,
@@ -62,12 +77,29 @@ messages.post('/', async (c) => {
     created_at: Date.now(),
     delivered_at: null,
     read_at: null,
+    reply_to: body.reply_to ?? null,
+    pinned: 0,
   };
 
   await db.execute({
-    sql: 'INSERT INTO messages (id, from_agent, to_agent, channel, type, content, metadata, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    args: [msg.id, msg.from_agent, msg.to_agent, msg.channel, msg.type, msg.content, msg.metadata, msg.created_at],
+    sql: 'INSERT INTO messages (id, from_agent, to_agent, channel, type, content, metadata, created_at, reply_to, pinned) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    args: [msg.id, msg.from_agent, msg.to_agent, msg.channel, msg.type, msg.content, msg.metadata, msg.created_at, msg.reply_to, 0],
   });
+
+  // If handoff, auto-create task for receiving agent
+  if (msg.type === 'handoff' && msg.metadata) {
+    try {
+      const meta = JSON.parse(msg.metadata);
+      if (meta.to_agent) {
+        const taskId = uuid();
+        const now = Date.now();
+        await db.execute({
+          sql: 'INSERT INTO tasks (id, title, description, assigned_to, created_by, status, priority, channel, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          args: [taskId, `Handoff: ${meta.from_task || 'task'}`, meta.context || msg.content, meta.to_agent, msg.from_agent, 'pending', 'high', msg.channel, now, now],
+        });
+      }
+    } catch {}
+  }
 
   // Push to SSE connections
   const payload = JSON.stringify(msg);
@@ -105,12 +137,20 @@ messages.get('/', async (c) => {
   const channel = c.req.query('channel') ?? 'general';
   const since = c.req.query('since') ? Number(c.req.query('since')) : 0;
   const limit = c.req.query('limit') ? Math.min(Number(c.req.query('limit')), 200) : 50;
+  const search = c.req.query('search');
 
-  const result = await db.execute({
-    sql: 'SELECT * FROM messages WHERE channel = ? AND created_at > ? ORDER BY created_at ASC LIMIT ?',
-    args: [channel, since, limit],
-  });
+  let sql = 'SELECT * FROM messages WHERE channel = ? AND created_at > ?';
+  const args: any[] = [channel, since];
 
+  if (search) {
+    sql += ' AND content LIKE ?';
+    args.push(`%${search}%`);
+  }
+
+  sql += ' ORDER BY created_at ASC LIMIT ?';
+  args.push(limit);
+
+  const result = await db.execute({ sql, args });
   return c.json(result.rows);
 });
 
@@ -123,6 +163,16 @@ messages.post('/:id/ack', async (c) => {
   const result = await db.execute({ sql: `UPDATE messages SET ${col} = ? WHERE id = ?`, args: [Date.now(), id] });
   if (result.rowsAffected === 0) return c.json({ error: 'Message not found' }, 404);
   return c.json({ ok: true });
+});
+
+// Pin/unpin a message
+messages.post('/:id/pin', async (c) => {
+  const id = c.req.param('id');
+  const body = await c.req.json<{ pinned?: boolean }>().catch(() => ({}));
+  const pinned = (body as any)?.pinned !== false ? 1 : 0;
+  const result = await db.execute({ sql: 'UPDATE messages SET pinned = ? WHERE id = ?', args: [pinned, id] });
+  if (result.rowsAffected === 0) return c.json({ error: 'Message not found' }, 404);
+  return c.json({ ok: true, pinned: !!pinned });
 });
 
 // Unread messages for an agent

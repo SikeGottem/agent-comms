@@ -26,6 +26,8 @@ export interface Message {
   created_at: number;
   delivered_at: number | null;
   read_at: number | null;
+  reply_to: string | null;
+  pinned: number | null;
 }
 
 export interface Channel {
@@ -33,6 +35,27 @@ export interface Channel {
   name: string;
   description: string | null;
   created_at: number;
+}
+
+export interface Task {
+  id: string;
+  title: string;
+  description: string | null;
+  assigned_to: string | null;
+  created_by: string;
+  status: 'pending' | 'in_progress' | 'done' | 'blocked';
+  priority: 'low' | 'medium' | 'high' | 'urgent';
+  channel: string;
+  created_at: number;
+  updated_at: number;
+  completed_at: number | null;
+}
+
+export interface SharedMemory {
+  key: string;
+  value: string;
+  updated_by: string;
+  updated_at: number;
 }
 
 // SSE connection registry

@@ -48,10 +48,37 @@ async function initDB() {
       created_at INTEGER
     );
 
+    CREATE TABLE IF NOT EXISTS tasks (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      description TEXT,
+      assigned_to TEXT,
+      created_by TEXT NOT NULL,
+      status TEXT DEFAULT 'pending',
+      priority TEXT DEFAULT 'medium',
+      channel TEXT DEFAULT 'general',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      completed_at INTEGER
+    );
+
+    CREATE TABLE IF NOT EXISTS shared_memory (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_by TEXT,
+      updated_at INTEGER NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_messages_channel ON messages(channel);
     CREATE INDEX IF NOT EXISTS idx_messages_to_agent ON messages(to_agent);
     CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
+    CREATE INDEX IF NOT EXISTS idx_tasks_assigned ON tasks(assigned_to);
+    CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
   `);
+
+  // Add new columns to existing tables (migration pattern)
+  try { await db.execute('ALTER TABLE messages ADD COLUMN reply_to TEXT'); } catch {}
+  try { await db.execute('ALTER TABLE messages ADD COLUMN pinned INTEGER DEFAULT 0'); } catch {}
 
   // Seed default channel
   const existing = await db.execute({ sql: 'SELECT id FROM channels WHERE id = ?', args: ['general'] });

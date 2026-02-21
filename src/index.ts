@@ -8,6 +8,8 @@ import agentRoutes from './routes/agents.js';
 import messageRoutes from './routes/messages.js';
 import channelRoutes from './routes/channels.js';
 import streamRoute from './routes/stream.js';
+import taskRoutes from './routes/tasks.js';
+import memoryRoutes from './routes/memory.js';
 import { dashboardHTML } from './dashboard.js';
 
 const app = new Hono();
@@ -18,9 +20,9 @@ app.use('*', logger());
 // Health check (no auth)
 app.get('/', (c) => c.json({
   name: 'agent-comms',
-  version: '0.1.0',
+  version: '0.2.0',
   status: 'running',
-  endpoints: ['/agents', '/messages', '/channels', '/stream'],
+  endpoints: ['/agents', '/messages', '/channels', '/stream', '/tasks', '/memory'],
 }));
 
 // Dashboard (no auth)
@@ -31,12 +33,16 @@ app.use('/agents/*', authMiddleware);
 app.use('/messages/*', authMiddleware);
 app.use('/channels/*', authMiddleware);
 app.use('/stream/*', authMiddleware);
+app.use('/tasks/*', authMiddleware);
+app.use('/memory/*', authMiddleware);
 
 app.route('/agents', agentRoutes);
 app.route('/messages', messageRoutes);
 app.route('/channels', channelRoutes);
 app.route('/stream', streamRoute);
+app.route('/tasks', taskRoutes);
+app.route('/memory', memoryRoutes);
 
 const port = Number(process.env.PORT) || 3141;
-console.log(`🚀 agent-comms running on http://localhost:${port}`);
+console.log(`🚀 agent-comms v0.2.0 running on http://localhost:${port}`);
 serve({ fetch: app.fetch, port });

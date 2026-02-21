@@ -1,7 +1,11 @@
 import { Hono } from 'hono';
 import db from '../db.js';
+import { sseConnections } from './stream.js';
 
 const agents = new Hono();
+
+// Track typing status: agentId -> timestamp
+const typingStatus = new Map<string, number>();
 
 agents.post('/register', async (c) => {
   const body = await c.req.json<{ id: string; name: string; platform?: string; webhook_url?: string; metadata?: Record<string, unknown> }>();
@@ -12,7 +16,6 @@ agents.post('/register', async (c) => {
   const now = Date.now();
   const meta = body.metadata ? JSON.stringify(body.metadata) : null;
 
-  // Check if exists
   const existing = await db.execute({ sql: 'SELECT id FROM agents WHERE id = ?', args: [body.id] });
   if (existing.rows.length > 0) {
     await db.execute({
@@ -48,6 +51,64 @@ agents.post('/:id/heartbeat', async (c) => {
     return c.json({ error: 'Agent not found' }, 404);
   }
   return c.json({ ok: true });
+});
+
+// Typing indicator
+agents.post('/:id/typing', async (c) => {
+  const id = c.req.param('id');
+  typingStatus.set(id, Date.now());
+
+  // Broadcast typing to all SSE connections
+  const payload = JSON.stringify({ type: 'typing', agent: id, timestamp: Date.now() });
+  for (const [agentId, conns] of sseConnections) {
+    if (agentId !== id) {
+      conns.forEach(send => send(payload));
+    }
+  }
+
+  return c.json({ ok: true });
+});
+
+// Get typing agents
+agents.get('/typing', async (c) => {
+  const now = Date.now();
+  const TYPING_TIMEOUT = 5000;
+  const typing: string[] = [];
+  for (const [id, ts] of typingStatus) {
+    if (now - ts < TYPING_TIMEOUT) {
+      typing.push(id);
+    } else {
+      typingStatus.delete(id);
+    }
+  }
+  return c.json(typing);
+});
+
+// Context injection helper
+agents.get('/:id/context', async (c) => {
+  const id = c.req.param('id');
+
+  // Last 5 messages sent
+  const msgs = await db.execute({
+    sql: 'SELECT * FROM messages WHERE from_agent = ? ORDER BY created_at DESC LIMIT 5',
+    args: [id],
+  });
+
+  // Current tasks
+  const tasks = await db.execute({
+    sql: 'SELECT * FROM tasks WHERE assigned_to = ? AND status != ? ORDER BY created_at DESC',
+    args: [id, 'done'],
+  });
+
+  // Last seen
+  const agent = await db.execute({ sql: 'SELECT last_seen_at FROM agents WHERE id = ?', args: [id] });
+
+  return c.json({
+    agent_id: id,
+    last_seen: agent.rows[0] ? (agent.rows[0] as any).last_seen_at : null,
+    recent_messages: msgs.rows,
+    active_tasks: tasks.rows,
+  });
 });
 
 export default agents;
