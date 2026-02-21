@@ -88,16 +88,25 @@ let channel = 'general';
 let sse = null;
 const seenIds = new Set();
 
-const avatarMap = { woozy: '🎱', rusty: '🤖', dashboard: '👤' };
-const getAvatar = (id) => avatarMap[id] || (id.includes('human') ? '👤' : '🤖');
+// Get or prompt for username, stored in localStorage
+let myName = localStorage.getItem('agent-comms-name');
+if (!myName) {
+  myName = prompt('What\\'s your name?') || 'Anonymous';
+  localStorage.setItem('agent-comms-name', myName);
+}
+const myId = 'human-' + myName.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+const avatarMap = { woozy: '🎱', rusty: '🤖' };
+const getAvatar = (id) => avatarMap[id] || (id.startsWith('human') ? '👤' : '🤖');
 const fmtTime = (ts) => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
 async function init() {
-  // Register dashboard agent
-  await fetch('/agents/register', { method: 'POST', headers: H, body: JSON.stringify({ id: 'dashboard', name: 'Dashboard', platform: 'web' }) }).catch(() => {});
+  // Register as named human agent
+  await fetch('/agents/register', { method: 'POST', headers: H, body: JSON.stringify({ id: myId, name: myName, platform: 'web' }) }).catch(() => {});
   loadAgents();
   loadMessages();
   connectSSE();
+  document.getElementById('header').textContent = '# ' + channel + '  —  logged in as ' + myName;
 }
 
 async function loadAgents() {
@@ -138,7 +147,7 @@ let lastPollTime = 0;
 
 function connectSSE() {
   if (sse) sse.close();
-  sse = new EventSource('/stream?agent=dashboard&key=' + API_KEY);
+  sse = new EventSource('/stream?agent=' + myId + '&key=' + API_KEY);
   sse.addEventListener('message', (e) => {
     try { const m = JSON.parse(e.data); appendMsg(m); } catch {}
   });
@@ -169,7 +178,7 @@ document.querySelectorAll('.ch-btn').forEach(btn => {
     document.querySelectorAll('.ch-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     channel = btn.dataset.ch;
-    document.getElementById('header').textContent = '# ' + channel;
+    document.getElementById('header').textContent = '# ' + channel + '  —  logged in as ' + myName;
     loadMessages();
   });
 });
@@ -180,13 +189,11 @@ async function sendMsg() {
   const text = input.value.trim();
   if (!text) return;
   const type = document.getElementById('msg-type').value;
-  const res2 = await fetch('/messages', { method: 'POST', headers: H, body: JSON.stringify({ from_agent: 'dashboard', channel, type, content: text }) });
+  const res2 = await fetch('/messages', { method: 'POST', headers: H, body: JSON.stringify({ from_agent: myId, channel, type, content: text }) });
   const result = await res2.json();
   input.value = '';
-  // Don't append locally — SSE or polling will pick it up to avoid duplicates
-  // But show immediately for responsiveness
   if (result.message) {
-    appendMsg({ id: result.message.id, from_agent: 'dashboard', channel, type, content: text, created_at: result.message.created_at });
+    appendMsg({ id: result.message.id, from_agent: myId, channel, type, content: text, created_at: result.message.created_at });
   }
 }
 
