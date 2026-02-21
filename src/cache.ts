@@ -75,8 +75,10 @@ export async function getCachedUnreadCount(agentId: string): Promise<{ total: nu
 
   const result = await db.execute({
     sql: `SELECT COUNT(*) as total, SUM(CASE WHEN priority = 'urgent' THEN 1 ELSE 0 END) as urgent 
-          FROM messages WHERE (to_agent = ? OR (to_agent IS NULL AND from_agent != ?)) AND read_at IS NULL AND (expires_at IS NULL OR expires_at > ?)`,
-    args: [agentId, agentId, Date.now()],
+          FROM messages WHERE (to_agent = ? OR (to_agent IS NULL AND from_agent != ?))
+          AND id NOT IN (SELECT message_id FROM message_reads WHERE agent_id = ?)
+          AND (expires_at IS NULL OR expires_at > ?)`,
+    args: [agentId, agentId, agentId, Date.now()],
   });
   const row = result.rows[0] as any;
   const counts = { total: Number(row.total) || 0, urgent: Number(row.urgent) || 0 };

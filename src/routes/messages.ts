@@ -258,6 +258,23 @@ messages.get('/', async (c) => {
   const result = await db.execute({ sql, args });
   const rows = result.rows as any[];
 
+  // Per-agent read status
+  const reader = c.req.query('reader');
+  if (reader && rows.length > 0) {
+    const msgIds = rows.map(r => r.id).filter(Boolean);
+    if (msgIds.length > 0) {
+      const placeholders = msgIds.map(() => '?').join(',');
+      const readResult = await db.execute({
+        sql: `SELECT message_id FROM message_reads WHERE agent_id = ? AND message_id IN (${placeholders})`,
+        args: [reader, ...msgIds],
+      });
+      const readSet = new Set(readResult.rows.map((r: any) => r.message_id));
+      for (const row of rows) {
+        (row as any).read_by_me = readSet.has(row.id);
+      }
+    }
+  }
+
   // Batch prefetch agent names in ONE query instead of N+1
   if (rows.length > 0) {
     const agentIds = [...new Set(rows.map(r => r.from_agent).filter(Boolean))];
@@ -277,19 +294,31 @@ messages.get('/', async (c) => {
   return c.json(rows);
 });
 
-// Acknowledge / mark read
+// Acknowledge / mark read (per-agent)
 messages.post('/:id/ack', async (c) => {
   const id = c.req.param('id');
-  const body = await c.req.json<{ status?: 'delivered' | 'read' }>().catch(() => ({}));
+  const body = await c.req.json<{ status?: 'delivered' | 'read'; agent_id?: string }>().catch(() => ({}));
   const status = (body as any)?.status ?? 'read';
-  const col = status === 'delivered' ? 'delivered_at' : 'read_at';
+  const agentId = (body as any)?.agent_id || c.req.query('agent') || c.req.header('X-Agent-Id') || '';
   const now = Date.now();
   
-  // Set delivered_at on first delivery if not already set
+  // Always update delivered_at on the message itself
+  if (status === 'delivered') {
+    await db.execute({ sql: 'UPDATE messages SET delivered_at = COALESCE(delivered_at, ?) WHERE id = ?', args: [now, id] });
+  }
+
+  // For read status, insert per-agent read receipt
   if (status === 'read') {
-    await db.execute({ sql: 'UPDATE messages SET delivered_at = COALESCE(delivered_at, ?), read_at = ? WHERE id = ?', args: [now, now, id] });
-  } else {
-    await db.execute({ sql: `UPDATE messages SET ${col} = ? WHERE id = ?`, args: [now, id] });
+    await db.execute({ sql: 'UPDATE messages SET delivered_at = COALESCE(delivered_at, ?) WHERE id = ?', args: [now, id] });
+    // Also set legacy read_at for backward compat
+    await db.execute({ sql: 'UPDATE messages SET read_at = COALESCE(read_at, ?) WHERE id = ?', args: [now, id] });
+    
+    if (agentId) {
+      await db.execute({
+        sql: 'INSERT OR IGNORE INTO message_reads (message_id, agent_id, read_at) VALUES (?, ?, ?)',
+        args: [id, agentId, now],
+      });
+    }
   }
   
   invalidateUnreadCache();
@@ -316,9 +345,11 @@ messages.get('/unread', async (c) => {
 
   const now = Date.now();
   const result = await db.execute({
-    sql: `SELECT * FROM messages WHERE (to_agent = ? OR (to_agent IS NULL AND from_agent != ?)) AND read_at IS NULL AND (expires_at IS NULL OR expires_at > ?)
+    sql: `SELECT * FROM messages WHERE (to_agent = ? OR (to_agent IS NULL AND from_agent != ?))
+          AND id NOT IN (SELECT message_id FROM message_reads WHERE agent_id = ?)
+          AND (expires_at IS NULL OR expires_at > ?)
           ORDER BY CASE WHEN priority = 'urgent' THEN 0 WHEN priority = 'high' THEN 1 WHEN priority = 'normal' THEN 2 ELSE 3 END, created_at ASC`,
-    args: [agentId, agentId, now],
+    args: [agentId, agentId, agentId, now],
   });
 
   // Mark delivered

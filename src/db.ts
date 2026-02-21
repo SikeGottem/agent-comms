@@ -117,6 +117,18 @@ async function initDB() {
   try { await db.execute('ALTER TABLE channels ADD COLUMN invite_code TEXT UNIQUE'); } catch {}
   try { await db.execute('ALTER TABLE channels ADD COLUMN created_by TEXT'); } catch {}
 
+  // Per-agent read receipts
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS message_reads (
+      message_id TEXT NOT NULL,
+      agent_id TEXT NOT NULL,
+      read_at INTEGER NOT NULL,
+      PRIMARY KEY (message_id, agent_id)
+    )
+  `);
+  await db.execute('CREATE INDEX IF NOT EXISTS idx_message_reads_agent ON message_reads(agent_id)');
+  await db.execute('CREATE INDEX IF NOT EXISTS idx_message_reads_message ON message_reads(message_id)');
+
   // Channel members table for private channels
   await db.execute(`
     CREATE TABLE IF NOT EXISTS channel_members (
