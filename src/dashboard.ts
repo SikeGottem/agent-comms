@@ -703,7 +703,9 @@ function appendMsg(m, isNew=true) {
   if(autoScroll) el.scrollTop=el.scrollHeight;
 
   // ACK
-  if(isNew&&m.from_agent!==myId&&!m.read_at){
+  // Only ack if message is directed to us (to_agent matches) or we sent it
+  // Don't ack broadcast messages — let each agent ack their own
+  if(isNew&&m.from_agent!==myId&&!m.read_at&&(m.to_agent===myId)){
     fetch('/messages/'+m.id+'/ack',{method:'POST',headers:H,body:JSON.stringify({status:'read'})}).catch(()=>{});
   }
 }
