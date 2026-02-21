@@ -11,13 +11,11 @@
   "dependencies": {
     "@hono/node-server": "^1.13.8",
     "@libsql/client": "^0.17.0",
-    "better-sqlite3": "^11.8.1",
     "dotenv": "^16.4.7",
     "hono": "^4.7.4",
     "uuid": "^11.1.0"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.13.4",
     "@types/uuid": "^10.0.0",
     "tsx": "^4.19.3",
