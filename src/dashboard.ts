@@ -784,10 +784,18 @@ async function sendMsg() {
 function sendTyping() { fetch('/agents/'+myId+'/typing',{method:'POST',headers:H}).catch(()=>{}); }
 let typingClear=null;
 function showTyping(agent) {
-  document.getElementById('typing-indicator').innerHTML=esc(agent)+' is typing<span class="typing-dots"><span></span><span></span><span></span></span>';
+  const el=document.getElementById('typing-indicator');
+  el.innerHTML='<span style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;background:var(--surface);border-radius:12px;border:1px solid var(--border)"><span style="width:20px;height:20px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff">'+getInitial(agent)+'</span><span>'+esc(agent)+' is typing</span><span class="typing-dots"><span></span><span></span><span></span></span></span>';
   clearTimeout(typingClear);
-  typingClear=setTimeout(()=>document.getElementById('typing-indicator').innerHTML='',3000);
+  typingClear=setTimeout(()=>el.innerHTML='',4000);
 }
+// Poll typing status as fallback (SSE may miss events)
+setInterval(async()=>{
+  try{
+    const r=await fetch(BASE+'/agents/typing',{headers:authH()});
+    if(r.ok){const agents=await r.json();if(agents.length>0)agents.forEach(a=>showTyping(a));}
+  }catch{}
+},2000);
 
 // ===== @ MENTION =====
 function checkMention() {
