@@ -4,6 +4,46 @@ import db from '../db.js';
 import { sseConnections } from './stream.js';
 import type { Message } from '../types.js';
 
+// Agent webhook configs — when a message arrives for an agent, notify them externally
+const AGENT_WEBHOOKS: Record<string, { type: 'telegram'; botToken: string; chatId: string; triggerText: string }> = {};
+
+// Initialize from env: WEBHOOK_<AGENT>=telegram:<botToken>:<chatId>:<triggerText>
+for (const [key, val] of Object.entries(process.env)) {
+  if (key.startsWith('WEBHOOK_') && val) {
+    const agentId = key.replace('WEBHOOK_', '').toLowerCase();
+    const parts = val.split(':');
+    if (parts[0] === 'telegram' && parts.length >= 4) {
+      AGENT_WEBHOOKS[agentId] = {
+        type: 'telegram',
+        botToken: parts.slice(1, -2).join(':'), // bot token may contain colons
+        chatId: parts[parts.length - 2],
+        triggerText: parts[parts.length - 1],
+      };
+    }
+  }
+}
+
+async function notifyAgent(agentId: string, fromAgent: string, content: string) {
+  const webhook = AGENT_WEBHOOKS[agentId];
+  if (!webhook) return;
+  
+  if (webhook.type === 'telegram') {
+    try {
+      const preview = content.length > 100 ? content.slice(0, 100) + '...' : content;
+      await fetch(`https://api.telegram.org/bot${webhook.botToken}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: webhook.chatId,
+          text: `📨 agent-comms: ${fromAgent} says: ${preview}`,
+        }),
+      });
+    } catch (e) {
+      console.error(`[webhook] Failed to notify ${agentId}:`, e);
+    }
+  }
+}
+
 const messages = new Hono();
 
 // Send a message
@@ -57,6 +97,18 @@ messages.post('/', async (c) => {
 
   // Also update sender's last_seen_at
   db.prepare('UPDATE agents SET last_seen_at = ? WHERE id = ?').run(Date.now(), msg.from_agent);
+
+  // Notify agents via webhooks (fire and forget)
+  if (msg.to_agent) {
+    notifyAgent(msg.to_agent, msg.from_agent, msg.content);
+  } else {
+    // Broadcast — notify all registered webhook agents except sender
+    for (const agentId of Object.keys(AGENT_WEBHOOKS)) {
+      if (agentId !== msg.from_agent) {
+        notifyAgent(agentId, msg.from_agent, msg.content);
+      }
+    }
+  }
 
   return c.json({ ok: true, message: { id: msg.id, created_at: msg.created_at } }, 201);
 });
