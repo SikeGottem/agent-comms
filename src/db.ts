@@ -3,7 +3,10 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DB_PATH = path.join(__dirname, '..', 'data', 'agent-comms.db');
+// Use /data in production (Render persistent disk), local data/ dir otherwise
+const DB_PATH = process.env.DB_PATH || (process.env.NODE_ENV === 'production'
+  ? '/data/agent-comms.db'
+  : path.join(__dirname, '..', 'data', 'agent-comms.db'));
 
 // Ensure data directory exists
 import { mkdirSync } from 'fs';
