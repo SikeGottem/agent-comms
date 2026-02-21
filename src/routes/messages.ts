@@ -256,7 +256,25 @@ messages.get('/', async (c) => {
   args.push(limit);
 
   const result = await db.execute({ sql, args });
-  return c.json(result.rows);
+  const rows = result.rows as any[];
+
+  // Batch prefetch agent names in ONE query instead of N+1
+  if (rows.length > 0) {
+    const agentIds = [...new Set(rows.map(r => r.from_agent).filter(Boolean))];
+    if (agentIds.length > 0) {
+      const placeholders = agentIds.map(() => '?').join(',');
+      const agentResult = await db.execute({
+        sql: `SELECT id, name FROM agents WHERE id IN (${placeholders})`,
+        args: agentIds,
+      });
+      const agentMap = new Map(agentResult.rows.map((a: any) => [a.id, a.name]));
+      for (const row of rows) {
+        (row as any).from_agent_name = agentMap.get(row.from_agent) || null;
+      }
+    }
+  }
+
+  return c.json(rows);
 });
 
 // Acknowledge / mark read

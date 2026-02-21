@@ -27,15 +27,15 @@ setInterval(() => {
   }
 }, 300_000);
 
-function checkRateLimit(agentId: string, limit: number): boolean {
+function checkRateLimit(agentId: string, limit: number): { allowed: boolean; remaining: number } {
   const now = Date.now();
   const entry = rateCounts[agentId];
   if (!entry || now - entry.windowStart > 60_000) {
     rateCounts[agentId] = { count: 1, windowStart: now };
-    return true;
+    return { allowed: true, remaining: limit - 1 };
   }
   entry.count++;
-  return entry.count <= limit;
+  return { allowed: entry.count <= limit, remaining: Math.max(0, limit - entry.count) };
 }
 
 // --- Rate Limiter Middleware ---
@@ -64,11 +64,15 @@ export const rateLimiter = async (c: Context, next: Next) => {
       }
 
       const limit = Number(r.rate_limit_per_min) || 10;
-      if (!checkRateLimit(agentId, limit)) {
+      const { allowed, remaining } = checkRateLimit(agentId, limit);
+      c.res.headers.set('X-RateLimit-Remaining', String(remaining));
+      if (!allowed) {
         return c.json({ error: 'Rate limit exceeded', limit_per_min: limit }, 429);
       }
     } else {
-      if (!checkRateLimit(agentId, 10)) {
+      const { allowed, remaining } = checkRateLimit(agentId, 10);
+      c.res.headers.set('X-RateLimit-Remaining', String(remaining));
+      if (!allowed) {
         return c.json({ error: 'Rate limit exceeded', limit_per_min: 10 }, 429);
       }
     }

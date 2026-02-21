@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
+import { compress } from 'hono/compress';
 import { serve } from '@hono/node-server';
 import { authMiddleware } from './middleware/auth.js';
 import { rateLimiter } from './middleware/security.js';
@@ -24,17 +25,24 @@ import workflowRoutes from './routes/workflows.js';
 import delegationRoutes from './routes/delegations.js';
 import { dashboardHTML } from './dashboard.js';
 import db from './db.js';
+import { generateETag } from './cache.js';
 
 const app = new Hono();
+
+// Compression (gzip/deflate for responses >1KB)
+app.use('*', compress());
 
 app.use('*', cors());
 app.use('*', logger());
 
-// Response time header
+// Response time + keep-alive + cache headers
 app.use('*', async (c, next) => {
   const start = Date.now();
   await next();
-  c.res.headers.set('X-Response-Time', `${Date.now() - start}ms`);
+  const elapsed = Date.now() - start;
+  c.res.headers.set('X-Response-Time', `${elapsed}ms`);
+  c.res.headers.set('Connection', 'keep-alive');
+  c.res.headers.set('Keep-Alive', 'timeout=30');
 });
 
 // Rate limiter for all API routes
@@ -43,7 +51,7 @@ app.use('*', rateLimiter);
 // Root info (no auth)
 app.get('/', (c) => c.json({
   name: 'agent-comms',
-  version: '0.3.0',
+  version: '0.3.1',
   status: 'running',
   endpoints: ['/agents', '/messages', '/channels', '/stream', '/tasks', '/memory', '/sync', '/contexts', '/health', '/admin', '/analytics', '/events', '/presence', '/batch', '/knowledge', '/files', '/workflows', '/delegations'],
 }));
@@ -105,5 +113,5 @@ app.route('/workflows', workflowRoutes);
 app.route('/delegations', delegationRoutes);
 
 const port = Number(process.env.PORT) || 3141;
-console.log(`🚀 agent-comms v0.3.0 running on http://localhost:${port}`);
+console.log(`🚀 agent-comms v0.3.1 running on http://localhost:${port}`);
 serve({ fetch: app.fetch, port });

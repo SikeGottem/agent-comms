@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { randomBytes } from 'crypto';
 import db from '../db.js';
+import { getCachedChannels, invalidateChannelCache, generateETag } from '../cache.js';
 
 const channels = new Hono();
 
@@ -71,6 +72,7 @@ channels.post('/', async (c) => {
     }
   }
 
+  invalidateChannelCache();
   const response: any = { ok: true, channel: { id: body.id, name: body.name, is_private: !!isPrivate } };
   if (inviteCode) response.invite_code = inviteCode;
   return c.json(response, 201);
@@ -79,8 +81,7 @@ channels.post('/', async (c) => {
 // List channels (filter private channels for non-members)
 channels.get('/', async (c) => {
   const agentId = c.req.query('agent') || c.req.header('X-Agent-Id') || '';
-  const result = await db.execute('SELECT * FROM channels');
-  const rows = result.rows as any[];
+  const rows = await getCachedChannels();
 
   // Filter: only show private channels to members
   const filtered = [];
@@ -94,6 +95,15 @@ channels.get('/', async (c) => {
       filtered.push(ch);
     }
   }
+
+  // ETag support
+  const etag = generateETag(filtered);
+  if (c.req.header('If-None-Match') === etag) {
+    c.res.headers.set('X-Cache', 'HIT');
+    return c.body(null, 304);
+  }
+  c.res.headers.set('ETag', etag);
+  c.res.headers.set('X-Cache', 'HIT');
   return c.json(filtered);
 });
 
@@ -114,6 +124,7 @@ channels.patch('/:id', async (c) => {
   args.push(id);
   const result = await db.execute({ sql: `UPDATE channels SET ${sets.join(', ')} WHERE id = ?`, args });
   if (result.rowsAffected === 0) return c.json({ error: 'Channel not found' }, 404);
+  invalidateChannelCache();
   return c.json({ ok: true });
 });
 

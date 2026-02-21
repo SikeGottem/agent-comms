@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { v4 as uuid } from 'uuid';
 import db from '../db.js';
 import { sseConnections } from './stream.js';
+import { invalidateTaskCache, generateETag } from '../cache.js';
 
 const tasks = new Hono();
 
@@ -127,6 +128,7 @@ tasks.post('/', async (c) => {
     conns.forEach(send => send(payload));
   }
 
+  invalidateTaskCache();
   return c.json({ ok: true, task }, 201);
 });
 
@@ -238,6 +240,13 @@ tasks.get('/', async (c) => {
     ...r,
     stale: r.status === 'pending' && !r.assigned_to && (now - Number(r.created_at)) > STALE_THRESHOLD,
   }));
+
+  const etag = generateETag(rows);
+  if (c.req.header('If-None-Match') === etag) {
+    c.res.headers.set('X-Cache', 'HIT');
+    return c.body(null, 304);
+  }
+  c.res.headers.set('ETag', etag);
   return c.json(rows);
 });
 
@@ -368,6 +377,7 @@ tasks.post('/:id/claim', async (c) => {
     conns.forEach(send => send(msgPayload));
   }
 
+  invalidateTaskCache();
   return c.json({ ok: true, task_id: id, claimed_by: body.agent_id });
 });
 
@@ -417,6 +427,7 @@ tasks.post('/:id/complete', async (c) => {
     conns.forEach(send => send(msgPayload));
   }
 
+  invalidateTaskCache();
   return c.json({ ok: true, task_id: id, completed_by: agent });
 });
 

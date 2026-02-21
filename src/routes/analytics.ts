@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { authMiddleware } from '../middleware/auth.js';
 import db from '../db.js';
 import type { Client } from '@libsql/client';
+import { getCachedAnalyticsOverview, generateETag } from '../cache.js';
 
 // --- Init tables ---
 async function initAnalyticsTables() {
@@ -64,36 +65,17 @@ export async function trackResponseTime(database: typeof db, agentId: string, ms
 // --- Routes ---
 const analyticsRoutes = new Hono();
 
-// GET /overview — no auth
+// GET /overview — no auth, cached 30s
 analyticsRoutes.get('/overview', async (c) => {
-  const today = new Date().toISOString().slice(0, 10);
-  const startOfDay = new Date(today).getTime();
-
-  const [msgStats, activeAgents, avgResp, busiestChannel] = await Promise.all([
-    db.execute({
-      sql: 'SELECT COALESCE(SUM(messages_sent + messages_received), 0) as total FROM message_stats WHERE date = ?',
-      args: [today],
-    }),
-    db.execute({
-      sql: 'SELECT COUNT(DISTINCT agent_id) as count FROM message_stats WHERE date = ?',
-      args: [today],
-    }),
-    db.execute({
-      sql: 'SELECT COALESCE(AVG(avg_response_time_ms), 0) as avg FROM message_stats WHERE date = ? AND avg_response_time_ms > 0',
-      args: [today],
-    }),
-    db.execute({
-      sql: `SELECT channel, COUNT(*) as count FROM messages WHERE created_at >= ? GROUP BY channel ORDER BY count DESC LIMIT 1`,
-      args: [startOfDay],
-    }),
-  ]);
-
-  return c.json({
-    total_messages_today: Number(msgStats.rows[0]?.total ?? 0),
-    active_agents: Number(activeAgents.rows[0]?.count ?? 0),
-    avg_response_time_ms: Math.round(Number(avgResp.rows[0]?.avg ?? 0)),
-    busiest_channel: busiestChannel.rows[0]?.channel ?? null,
-  });
+  const { data, hit } = await getCachedAnalyticsOverview();
+  const etag = generateETag(data);
+  if (c.req.header('If-None-Match') === etag) {
+    c.res.headers.set('X-Cache', 'HIT');
+    return c.body(null, 304);
+  }
+  c.res.headers.set('ETag', etag);
+  c.res.headers.set('X-Cache', hit ? 'HIT' : 'MISS');
+  return c.json(data);
 });
 
 // GET /agent/:id — no auth

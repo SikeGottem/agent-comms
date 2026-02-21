@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import db from '../db.js';
 import { sseConnections } from './stream.js';
-import { invalidateAgentCache, getCachedAgents } from '../cache.js';
+import { invalidateAgentCache, getCachedAgents, generateETag } from '../cache.js';
 
 const agents = new Hono();
 
@@ -37,7 +37,7 @@ agents.post('/register', async (c) => {
 
 agents.get('/', async (c) => {
   const ONLINE_THRESHOLD = 60_000;
-  const POSSIBLY_OFFLINE_THRESHOLD = 300_000; // 5 minutes
+  const POSSIBLY_OFFLINE_THRESHOLD = 300_000;
   const now = Date.now();
   const agentList = await getCachedAgents();
   const rows = agentList.map((a: any) => {
@@ -56,6 +56,16 @@ agents.get('/', async (c) => {
       status,
     };
   });
+
+  // ETag support
+  const etag = generateETag(agentList);
+  if (c.req.header('If-None-Match') === etag) {
+    c.res.headers.set('X-Cache', 'HIT');
+    return c.body(null, 304);
+  }
+  c.res.headers.set('ETag', etag);
+  c.res.headers.set('X-Cache', 'HIT');
+
   return c.json(rows);
 });
 
@@ -64,10 +74,10 @@ agents.get('/available', async (c) => {
   const capability = c.req.query('capability');
   if (!capability) return c.json({ error: 'capability query param required' }, 400);
 
-  const result = await db.execute('SELECT * FROM agents');
+  const agentList = await getCachedAgents();
   const now = Date.now();
   const ONLINE_THRESHOLD = 300_000;
-  const matched = result.rows.filter((a: any) => {
+  const matched = agentList.filter((a: any) => {
     if (!a.capabilities) return false;
     try {
       const caps: string[] = JSON.parse(a.capabilities);
@@ -81,6 +91,7 @@ agents.get('/available', async (c) => {
     online: a.last_seen_at ? (now - Number(a.last_seen_at)) < ONLINE_THRESHOLD : false,
   })).sort((a: any, b: any) => a.current_load - b.current_load);
 
+  c.res.headers.set('X-Cache', 'HIT');
   return c.json(matched);
 });
 
@@ -99,7 +110,6 @@ agents.post('/:id/typing', async (c) => {
   const id = c.req.param('id');
   typingStatus.set(id, Date.now());
 
-  // Broadcast typing to all SSE connections
   const payload = JSON.stringify({ type: 'typing', agent: id, timestamp: Date.now() });
   for (const [agentId, conns] of sseConnections) {
     if (agentId !== id) {
@@ -129,20 +139,12 @@ agents.get('/typing', async (c) => {
 agents.get('/:id/context', async (c) => {
   const id = c.req.param('id');
 
-  // Last 5 messages sent
-  const msgs = await db.execute({
-    sql: 'SELECT * FROM messages WHERE from_agent = ? ORDER BY created_at DESC LIMIT 5',
-    args: [id],
-  });
-
-  // Current tasks
-  const tasks = await db.execute({
-    sql: 'SELECT * FROM tasks WHERE assigned_to = ? AND status != ? ORDER BY created_at DESC',
-    args: [id, 'done'],
-  });
-
-  // Last seen
-  const agent = await db.execute({ sql: 'SELECT last_seen_at FROM agents WHERE id = ?', args: [id] });
+  // Batch: fetch messages, tasks, and agent info in parallel
+  const [msgs, tasks, agent] = await Promise.all([
+    db.execute({ sql: 'SELECT * FROM messages WHERE from_agent = ? ORDER BY created_at DESC LIMIT 5', args: [id] }),
+    db.execute({ sql: 'SELECT * FROM tasks WHERE assigned_to = ? AND status != ? ORDER BY created_at DESC', args: [id, 'done'] }),
+    db.execute({ sql: 'SELECT last_seen_at FROM agents WHERE id = ?', args: [id] }),
+  ]);
 
   return c.json({
     agent_id: id,
