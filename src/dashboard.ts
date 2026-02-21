@@ -86,6 +86,7 @@ const API_KEY = 'key-agent-gamma';
 const H = { 'X-Agent-Key': API_KEY, 'Content-Type': 'application/json' };
 let channel = 'general';
 let sse = null;
+const seenIds = new Set();
 
 const avatarMap = { woozy: '🎱', rusty: '🤖', dashboard: '👤' };
 const getAvatar = (id) => avatarMap[id] || (id.includes('human') ? '👤' : '🤖');
@@ -121,6 +122,8 @@ async function loadMessages() {
 function appendMsg(m) {
   if (m.channel && m.channel !== channel) return;
   if (m.type === 'connected') return;
+  if (m.id && seenIds.has(m.id)) return;
+  if (m.id) seenIds.add(m.id);
   const el = document.getElementById('messages');
   const div = document.createElement('div');
   const typeClass = m.type && m.type !== 'chat' ? ' type-' + m.type : '';
@@ -131,6 +134,8 @@ function appendMsg(m) {
   el.scrollTop = el.scrollHeight;
 }
 
+let lastPollTime = 0;
+
 function connectSSE() {
   if (sse) sse.close();
   sse = new EventSource('/stream?agent=dashboard&key=' + API_KEY);
@@ -138,8 +143,23 @@ function connectSSE() {
     try { const m = JSON.parse(e.data); appendMsg(m); } catch {}
   });
   sse.addEventListener('system', (e) => {});
-  sse.onerror = () => setTimeout(connectSSE, 3000);
+  sse.onerror = () => {
+    sse.close();
+    sse = null;
+    setTimeout(connectSSE, 3000);
+  };
 }
+
+// Fallback polling every 3s in case SSE drops
+async function pollNew() {
+  try {
+    const since = lastPollTime || (Date.now() - 60000);
+    const res = await fetch('/messages?channel=' + channel + '&since=' + since + '&limit=50', { headers: H });
+    const msgs = await res.json();
+    msgs.forEach(m => { appendMsg(m); if (m.created_at > lastPollTime) lastPollTime = m.created_at; });
+  } catch {}
+}
+setInterval(pollNew, 3000);
 
 function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
 
@@ -163,7 +183,11 @@ async function sendMsg() {
   const res2 = await fetch('/messages', { method: 'POST', headers: H, body: JSON.stringify({ from_agent: 'dashboard', channel, type, content: text }) });
   const result = await res2.json();
   input.value = '';
-  appendMsg({ from_agent: 'dashboard', channel, type, content: text, created_at: result.message?.created_at || Date.now() });
+  // Don't append locally — SSE or polling will pick it up to avoid duplicates
+  // But show immediately for responsiveness
+  if (result.message) {
+    appendMsg({ id: result.message.id, from_agent: 'dashboard', channel, type, content: text, created_at: result.message.created_at });
+  }
 }
 
 document.getElementById('send-btn').addEventListener('click', sendMsg);
