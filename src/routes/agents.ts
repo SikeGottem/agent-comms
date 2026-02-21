@@ -5,22 +5,22 @@ const agents = new Hono();
 
 // Register a new agent
 agents.post('/register', async (c) => {
-  const body = await c.req.json<{ id: string; name: string; platform?: string; metadata?: Record<string, unknown> }>();
+  const body = await c.req.json<{ id: string; name: string; platform?: string; webhook_url?: string; metadata?: Record<string, unknown> }>();
   if (!body.id || !body.name) {
     return c.json({ error: 'id and name are required' }, 400);
   }
 
   const now = Date.now();
   db.prepare(`
-    INSERT INTO agents (id, name, platform, last_seen_at, metadata)
-    VALUES (?, ?, ?, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET name = ?, platform = ?, last_seen_at = ?, metadata = ?
+    INSERT INTO agents (id, name, platform, last_seen_at, metadata, webhook_url)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET name = ?, platform = ?, last_seen_at = ?, metadata = ?, webhook_url = ?
   `).run(
-    body.id, body.name, body.platform ?? null, now, body.metadata ? JSON.stringify(body.metadata) : null,
-    body.name, body.platform ?? null, now, body.metadata ? JSON.stringify(body.metadata) : null
+    body.id, body.name, body.platform ?? null, now, body.metadata ? JSON.stringify(body.metadata) : null, body.webhook_url ?? null,
+    body.name, body.platform ?? null, now, body.metadata ? JSON.stringify(body.metadata) : null, body.webhook_url ?? null
   );
 
-  return c.json({ ok: true, agent: { id: body.id, name: body.name, platform: body.platform ?? null } }, 201);
+  return c.json({ ok: true, agent: { id: body.id, name: body.name, platform: body.platform ?? null, webhook_url: body.webhook_url ?? null } }, 201);
 });
 
 // List all agents

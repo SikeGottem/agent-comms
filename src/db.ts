@@ -22,7 +22,8 @@ db.exec(`
     name TEXT NOT NULL,
     platform TEXT,
     last_seen_at INTEGER,
-    metadata TEXT
+    metadata TEXT,
+    webhook_url TEXT
   );
 
   CREATE TABLE IF NOT EXISTS messages (
@@ -50,6 +51,9 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_messages_to_agent ON messages(to_agent);
   CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
 `);
+
+// Add webhook_url column if missing (migration for existing DBs)
+try { db.exec('ALTER TABLE agents ADD COLUMN webhook_url TEXT'); } catch {}
 
 // Seed default channel
 const existing = db.prepare('SELECT id FROM channels WHERE id = ?').get('general');

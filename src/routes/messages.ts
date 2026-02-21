@@ -4,44 +4,34 @@ import db from '../db.js';
 import { sseConnections } from './stream.js';
 import type { Message } from '../types.js';
 
-// Agent webhook configs — when a message arrives for an agent, notify them externally
-const AGENT_WEBHOOKS: Record<string, { type: 'telegram'; botToken: string; chatId: string; triggerText: string }> = {};
+// Generic webhook notification — reads webhook_url from agent registration
+async function notifyAgent(agentId: string, fromAgent: string, content: string) {
+  const agent = db.prepare('SELECT webhook_url FROM agents WHERE id = ?').get(agentId) as any;
+  if (!agent?.webhook_url) return;
 
-// Initialize from env: WEBHOOK_<AGENT>=telegram:<botToken>:<chatId>:<triggerText>
-for (const [key, val] of Object.entries(process.env)) {
-  if (key.startsWith('WEBHOOK_') && val) {
-    const agentId = key.replace('WEBHOOK_', '').toLowerCase();
-    const parts = val.split(':');
-    if (parts[0] === 'telegram' && parts.length >= 4) {
-      AGENT_WEBHOOKS[agentId] = {
-        type: 'telegram',
-        botToken: parts.slice(1, -2).join(':'), // bot token may contain colons
-        chatId: parts[parts.length - 2],
-        triggerText: parts[parts.length - 1],
-      };
-    }
+  const preview = content.length > 200 ? content.slice(0, 200) + '...' : content;
+
+  try {
+    await fetch(agent.webhook_url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        event: 'new_message',
+        from_agent: fromAgent,
+        to_agent: agentId,
+        content: preview,
+        timestamp: Date.now(),
+      }),
+    });
+  } catch (e) {
+    console.error(`[webhook] Failed to notify ${agentId}:`, e);
   }
 }
 
-async function notifyAgent(agentId: string, fromAgent: string, content: string) {
-  const webhook = AGENT_WEBHOOKS[agentId];
-  if (!webhook) return;
-  
-  if (webhook.type === 'telegram') {
-    try {
-      const preview = content.length > 100 ? content.slice(0, 100) + '...' : content;
-      await fetch(`https://api.telegram.org/bot${webhook.botToken}/sendMessage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chat_id: webhook.chatId,
-          text: `📨 agent-comms: ${fromAgent} says: ${preview}`,
-        }),
-      });
-    } catch (e) {
-      console.error(`[webhook] Failed to notify ${agentId}:`, e);
-    }
-  }
+// Also notify all agents with webhooks for broadcast messages
+function getWebhookAgents(): string[] {
+  const rows = db.prepare('SELECT id FROM agents WHERE webhook_url IS NOT NULL').all() as any[];
+  return rows.map(r => r.id);
 }
 
 const messages = new Hono();
@@ -102,8 +92,8 @@ messages.post('/', async (c) => {
   if (msg.to_agent) {
     notifyAgent(msg.to_agent, msg.from_agent, msg.content);
   } else {
-    // Broadcast — notify all registered webhook agents except sender
-    for (const agentId of Object.keys(AGENT_WEBHOOKS)) {
+    // Broadcast — notify all agents with webhooks except sender
+    for (const agentId of getWebhookAgents()) {
       if (agentId !== msg.from_agent) {
         notifyAgent(agentId, msg.from_agent, msg.content);
       }
