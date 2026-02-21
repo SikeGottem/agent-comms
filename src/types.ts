@@ -5,7 +5,13 @@ export type MessageType =
   | 'handoff'
   | 'code_review'
   | 'approval'
-  | 'broadcast';
+  | 'broadcast'
+  | 'request'
+  | 'response'
+  | 'heartbeat'
+  | 'coordination';
+
+export type MessagePriority = 'low' | 'normal' | 'high' | 'urgent';
 
 export interface Agent {
   id: string;
@@ -13,6 +19,9 @@ export interface Agent {
   platform: string | null;
   last_seen_at: number | null;
   metadata: string | null;
+  webhook_url: string | null;
+  capabilities: string | null;
+  current_load: number;
 }
 
 export interface Message {
@@ -28,6 +37,8 @@ export interface Message {
   read_at: number | null;
   reply_to: string | null;
   pinned: number | null;
+  priority: MessagePriority;
+  expires_at: number | null;
 }
 
 export interface Channel {
@@ -35,6 +46,8 @@ export interface Channel {
   name: string;
   description: string | null;
   created_at: number;
+  topic: string | null;
+  pinned_context: string | null;
 }
 
 export interface Task {
@@ -49,6 +62,9 @@ export interface Task {
   created_at: number;
   updated_at: number;
   completed_at: number | null;
+  depends_on: string | null;
+  deadline: number | null;
+  required_capabilities: string | null;
 }
 
 export interface SharedMemory {
@@ -58,5 +74,31 @@ export interface SharedMemory {
   updated_at: number;
 }
 
+export interface Barrier {
+  id: string;
+  agents: string;
+  channel: string;
+  ready_agents: string;
+  created_at: number;
+  cleared: number;
+}
+
+export interface Lock {
+  resource: string;
+  agent: string;
+  acquired_at: number;
+  expires_at: number;
+}
+
+export interface Context {
+  name: string;
+  channel: string;
+  messages: string;
+  memory: string;
+  tasks: string;
+  created_at: number;
+}
+
 // SSE connection registry
-export type SSEConnections = Map<string, Set<(data: string) => void>>;
+export type SSEWriter = (data: string, event?: string) => void;
+export type SSEConnections = Map<string, Set<SSEWriter>>;

@@ -18,20 +18,23 @@ stream.get('/', async (c) => {
       sseConnections.set(agentId, new Set());
     }
 
-    const send = (data: string) => {
-      sse.writeSSE({ data, event: 'message' }).catch(() => {});
+    const send = (data: string, event?: string) => {
+      sse.writeSSE({ data, event: event || 'message' }).catch(() => {});
     };
 
     sseConnections.get(agentId)!.add(send);
 
-    // Send unread messages immediately
+    // Send unread messages immediately - urgent first
     const unread = await db.execute({
-      sql: 'SELECT * FROM messages WHERE (to_agent = ? OR (to_agent IS NULL AND from_agent != ?)) AND read_at IS NULL ORDER BY created_at ASC',
-      args: [agentId, agentId],
+      sql: `SELECT * FROM messages WHERE (to_agent = ? OR (to_agent IS NULL AND from_agent != ?)) AND read_at IS NULL AND (expires_at IS NULL OR expires_at > ?)
+            ORDER BY CASE WHEN priority = 'urgent' THEN 0 WHEN priority = 'high' THEN 1 WHEN priority = 'normal' THEN 2 ELSE 3 END, created_at ASC`,
+      args: [agentId, agentId, Date.now()],
     });
 
     for (const msg of unread.rows) {
-      await sse.writeSSE({ data: JSON.stringify(msg), event: 'message' });
+      const m = msg as any;
+      const eventType = m.priority === 'urgent' ? 'urgent' : 'message';
+      await sse.writeSSE({ data: JSON.stringify(msg), event: eventType });
     }
 
     await sse.writeSSE({ data: JSON.stringify({ type: 'connected', agent: agentId, unread: unread.rows.length }), event: 'system' });

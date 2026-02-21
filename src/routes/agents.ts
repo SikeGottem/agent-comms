@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import db from '../db.js';
 import { sseConnections } from './stream.js';
+import { invalidateAgentCache, getCachedAgents } from '../cache.js';
 
 const agents = new Hono();
 
@@ -8,40 +9,79 @@ const agents = new Hono();
 const typingStatus = new Map<string, number>();
 
 agents.post('/register', async (c) => {
-  const body = await c.req.json<{ id: string; name: string; platform?: string; webhook_url?: string; metadata?: Record<string, unknown> }>();
+  const body = await c.req.json<{ id: string; name: string; platform?: string; webhook_url?: string; metadata?: Record<string, unknown>; capabilities?: string[] }>();
   if (!body.id || !body.name) {
     return c.json({ error: 'id and name are required' }, 400);
   }
 
   const now = Date.now();
   const meta = body.metadata ? JSON.stringify(body.metadata) : null;
+  const capabilities = body.capabilities ? JSON.stringify(body.capabilities) : null;
 
   const existing = await db.execute({ sql: 'SELECT id FROM agents WHERE id = ?', args: [body.id] });
   if (existing.rows.length > 0) {
     await db.execute({
-      sql: 'UPDATE agents SET name = ?, platform = ?, last_seen_at = ?, metadata = ?, webhook_url = ? WHERE id = ?',
-      args: [body.name, body.platform ?? null, now, meta, body.webhook_url ?? null, body.id],
+      sql: 'UPDATE agents SET name = ?, platform = ?, last_seen_at = ?, metadata = ?, webhook_url = ?, capabilities = ? WHERE id = ?',
+      args: [body.name, body.platform ?? null, now, meta, body.webhook_url ?? null, capabilities, body.id],
     });
   } else {
     await db.execute({
-      sql: 'INSERT INTO agents (id, name, platform, last_seen_at, metadata, webhook_url) VALUES (?, ?, ?, ?, ?, ?)',
-      args: [body.id, body.name, body.platform ?? null, now, meta, body.webhook_url ?? null],
+      sql: 'INSERT INTO agents (id, name, platform, last_seen_at, metadata, webhook_url, capabilities, current_load) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      args: [body.id, body.name, body.platform ?? null, now, meta, body.webhook_url ?? null, capabilities, 0],
     });
   }
 
-  return c.json({ ok: true, agent: { id: body.id, name: body.name, platform: body.platform ?? null, webhook_url: body.webhook_url ?? null } }, 201);
+  invalidateAgentCache();
+  return c.json({ ok: true, agent: { id: body.id, name: body.name, platform: body.platform ?? null, webhook_url: body.webhook_url ?? null, capabilities: body.capabilities ?? null } }, 201);
 });
 
 agents.get('/', async (c) => {
   const ONLINE_THRESHOLD = 60_000;
+  const POSSIBLY_OFFLINE_THRESHOLD = 300_000; // 5 minutes
   const now = Date.now();
+  const agentList = await getCachedAgents();
+  const rows = agentList.map((a: any) => {
+    const lastSeen = a.last_seen_at ? Number(a.last_seen_at) : 0;
+    const timeSince = now - lastSeen;
+    let status = 'offline';
+    if (lastSeen && timeSince < ONLINE_THRESHOLD) status = 'online';
+    else if (lastSeen && timeSince < POSSIBLY_OFFLINE_THRESHOLD) status = 'possibly_offline';
+
+    return {
+      ...a,
+      metadata: a.metadata ? JSON.parse(a.metadata) : null,
+      capabilities: a.capabilities ? JSON.parse(a.capabilities) : null,
+      current_load: Number(a.current_load) || 0,
+      online: status === 'online',
+      status,
+    };
+  });
+  return c.json(rows);
+});
+
+// Find available agents by capability
+agents.get('/available', async (c) => {
+  const capability = c.req.query('capability');
+  if (!capability) return c.json({ error: 'capability query param required' }, 400);
+
   const result = await db.execute('SELECT * FROM agents');
-  const rows = result.rows.map((a: any) => ({
+  const now = Date.now();
+  const ONLINE_THRESHOLD = 300_000;
+  const matched = result.rows.filter((a: any) => {
+    if (!a.capabilities) return false;
+    try {
+      const caps: string[] = JSON.parse(a.capabilities);
+      return caps.includes(capability);
+    } catch { return false; }
+  }).map((a: any) => ({
     ...a,
     metadata: a.metadata ? JSON.parse(a.metadata) : null,
+    capabilities: a.capabilities ? JSON.parse(a.capabilities) : null,
+    current_load: Number(a.current_load) || 0,
     online: a.last_seen_at ? (now - Number(a.last_seen_at)) < ONLINE_THRESHOLD : false,
-  }));
-  return c.json(rows);
+  })).sort((a: any, b: any) => a.current_load - b.current_load);
+
+  return c.json(matched);
 });
 
 agents.post('/:id/heartbeat', async (c) => {
@@ -50,6 +90,7 @@ agents.post('/:id/heartbeat', async (c) => {
   if (result.rowsAffected === 0) {
     return c.json({ error: 'Agent not found' }, 404);
   }
+  invalidateAgentCache();
   return c.json({ ok: true });
 });
 

@@ -69,6 +69,31 @@ async function initDB() {
       updated_at INTEGER NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS barriers (
+      id TEXT PRIMARY KEY,
+      agents TEXT NOT NULL,
+      channel TEXT NOT NULL,
+      ready_agents TEXT DEFAULT '',
+      created_at INTEGER NOT NULL,
+      cleared INTEGER DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS locks (
+      resource TEXT PRIMARY KEY,
+      agent TEXT NOT NULL,
+      acquired_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS contexts (
+      name TEXT PRIMARY KEY,
+      channel TEXT NOT NULL,
+      messages TEXT NOT NULL,
+      memory TEXT NOT NULL,
+      tasks TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_messages_channel ON messages(channel);
     CREATE INDEX IF NOT EXISTS idx_messages_to_agent ON messages(to_agent);
     CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
@@ -76,9 +101,18 @@ async function initDB() {
     CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
   `);
 
-  // Add new columns to existing tables (migration pattern)
+  // Migrations - add columns to existing tables
   try { await db.execute('ALTER TABLE messages ADD COLUMN reply_to TEXT'); } catch {}
   try { await db.execute('ALTER TABLE messages ADD COLUMN pinned INTEGER DEFAULT 0'); } catch {}
+  try { await db.execute('ALTER TABLE messages ADD COLUMN priority TEXT DEFAULT \'normal\''); } catch {}
+  try { await db.execute('ALTER TABLE messages ADD COLUMN expires_at INTEGER'); } catch {}
+  try { await db.execute('ALTER TABLE agents ADD COLUMN capabilities TEXT'); } catch {}
+  try { await db.execute('ALTER TABLE agents ADD COLUMN current_load INTEGER DEFAULT 0'); } catch {}
+  try { await db.execute('ALTER TABLE tasks ADD COLUMN depends_on TEXT'); } catch {}
+  try { await db.execute('ALTER TABLE tasks ADD COLUMN deadline INTEGER'); } catch {}
+  try { await db.execute('ALTER TABLE tasks ADD COLUMN required_capabilities TEXT'); } catch {}
+  try { await db.execute('ALTER TABLE channels ADD COLUMN topic TEXT'); } catch {}
+  try { await db.execute('ALTER TABLE channels ADD COLUMN pinned_context TEXT'); } catch {}
 
   // Seed default channel
   const existing = await db.execute({ sql: 'SELECT id FROM channels WHERE id = ?', args: ['general'] });

@@ -11,25 +11,29 @@ export const dashboardHTML = `<!DOCTYPE html>
   --text: #c1c2c5; --text-dim: #909296; --accent: #7950f2;
   --green: #51cf66; --gray: #5c5f66; --border: #373a40;
   --red: #e03131; --orange: #e67700; --blue: #1c7ed6; --purple: #ae3ec9;
+  --yellow: #fcc419;
 }
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; overflow: hidden; }
 
 /* Sidebar */
-#sidebar { width: 240px; background: var(--bg2); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; overflow-y: auto; }
+#sidebar { width: 260px; background: var(--bg2); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; overflow-y: auto; }
 #sidebar h2 { padding: 16px; font-size: 14px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid var(--border); }
-.agent-item { display: flex; align-items: center; gap: 8px; padding: 8px 16px; font-size: 14px; }
+.agent-item { display: flex; align-items: center; gap: 8px; padding: 8px 16px; font-size: 14px; flex-wrap: wrap; }
 .agent-item .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .agent-item .dot.online { background: var(--green); }
+.agent-item .dot.possibly_offline { background: var(--yellow); }
 .agent-item .dot.offline { background: var(--gray); }
 .agent-item .avatar { font-size: 18px; }
 .agent-item .name { flex: 1; }
 .agent-item .platform { font-size: 11px; color: var(--text-dim); }
+.agent-item .load-badge { font-size: 10px; background: var(--bg3); border: 1px solid var(--border); border-radius: 10px; padding: 1px 6px; color: var(--text-dim); }
+.cap-badges { display: flex; gap: 3px; flex-wrap: wrap; width: 100%; padding-left: 34px; margin-top: 2px; }
+.cap-badge { font-size: 9px; background: var(--accent); color: #fff; border-radius: 3px; padding: 1px 5px; opacity: 0.8; }
 #channels { padding: 16px; border-bottom: 1px solid var(--border); }
 #channels h3 { font-size: 12px; color: var(--text-dim); text-transform: uppercase; margin-bottom: 8px; }
 .ch-btn { display: block; width: 100%; text-align: left; background: none; border: none; color: var(--text); padding: 6px 8px; border-radius: 4px; cursor: pointer; font-size: 14px; }
 .ch-btn:hover, .ch-btn.active { background: var(--bg3); color: #fff; }
 
-/* Hamburger for mobile */
 #hamburger { display: none; position: fixed; top: 8px; left: 8px; z-index: 100; background: var(--bg2); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; color: var(--text); font-size: 20px; cursor: pointer; }
 
 /* Main */
@@ -39,20 +43,22 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 #header button { background: var(--bg3); border: 1px solid var(--border); border-radius: 4px; padding: 4px 10px; color: var(--text); cursor: pointer; font-size: 12px; }
 #header button:hover { background: var(--accent); color: #fff; }
 
-/* Search bar */
+/* Topic bar */
+#topic-bar { padding: 6px 16px; background: var(--bg3); border-bottom: 1px solid var(--border); font-size: 12px; color: var(--text-dim); display: none; }
+#topic-bar.show { display: block; }
+#topic-bar .topic-text { color: var(--text); }
+
 #search-bar { padding: 8px 16px; border-bottom: 1px solid var(--border); background: var(--bg2); display: none; }
 #search-bar input { width: 100%; background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; color: var(--text); font-size: 14px; outline: none; }
 #search-bar input:focus { border-color: var(--accent); }
 #search-bar.show { display: block; }
 
-/* Pinned messages */
 #pinned-area { border-bottom: 1px solid var(--border); background: var(--bg2); max-height: 120px; overflow-y: auto; display: none; }
 #pinned-area.show { display: block; }
 #pinned-area .pinned-msg { padding: 6px 16px; font-size: 13px; display: flex; gap: 8px; color: var(--text-dim); }
 #pinned-area .pinned-msg .pin-icon { color: var(--accent); }
 #pinned-area .pinned-label { padding: 4px 16px; font-size: 11px; color: var(--accent); text-transform: uppercase; font-weight: 600; }
 
-/* Summary modal */
 #summary-modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 20px; width: 500px; max-width: 90vw; max-height: 80vh; overflow-y: auto; z-index: 200; }
 #summary-modal h3 { margin-bottom: 12px; }
 #summary-modal .summary-msg { padding: 4px 0; font-size: 13px; border-bottom: 1px solid var(--border); }
@@ -74,54 +80,57 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .msg .receipt { font-size: 11px; margin-left: 4px; }
 .msg .receipt.sent { color: var(--gray); }
 .msg .receipt.read { color: var(--blue); }
+.msg .priority-indicator { font-size: 10px; margin-left: 4px; }
 
-/* Message actions (pin, reply) */
 .msg-actions { display: none; position: absolute; top: 4px; right: 8px; gap: 4px; }
 .msg-actions button { background: var(--bg3); border: 1px solid var(--border); border-radius: 3px; padding: 2px 6px; color: var(--text-dim); cursor: pointer; font-size: 11px; }
 .msg-actions button:hover { color: #fff; border-color: var(--accent); }
 
-/* Thread replies */
 .msg.reply { margin-left: 40px; border-left: 2px solid var(--accent); padding-left: 12px; }
 .msg .reply-ref { font-size: 11px; color: var(--accent); margin-bottom: 2px; cursor: pointer; }
 
+/* Priority styling */
+.msg.priority-urgent { border-left: 3px solid var(--red); background: rgba(224,49,49,0.08); }
+.msg.priority-high { border-left: 3px solid var(--orange); }
+
+/* Message type badges */
 .type-task .badge { background: var(--orange); color: #fff; }
 .type-status_update .badge { background: var(--blue); color: #fff; }
 .type-handoff .badge { background: var(--purple); color: #fff; }
 .type-code_review .badge { background: #2b8a3e; color: #fff; }
 .type-approval .badge { background: var(--red); color: #fff; }
+.type-request .badge { background: #1098ad; color: #fff; }
+.type-response .badge { background: #37b24d; color: #fff; }
+.type-broadcast .badge { background: var(--purple); color: #fff; }
+.type-heartbeat .badge { background: var(--green); color: #fff; }
+.type-coordination .badge { background: var(--yellow); color: #000; }
 
-/* Code blocks */
 pre.code-block { background: var(--bg3); padding: 10px; border-radius: 6px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px; overflow-x: auto; margin-top: 4px; border: 1px solid var(--border); }
 pre.code-block code { color: #e1e1e1; }
 .code-lang { font-size: 10px; color: var(--accent); text-transform: uppercase; margin-bottom: 2px; }
 
-/* Handoff card */
 .handoff-card { background: var(--bg3); border: 1px solid var(--purple); border-radius: 8px; padding: 12px; margin-top: 6px; }
 .handoff-card h4 { color: var(--purple); margin-bottom: 6px; font-size: 13px; }
 .handoff-card .field { font-size: 12px; margin: 2px 0; }
 .handoff-card .field label { color: var(--text-dim); }
 
-/* Mentions */
 .mention { color: var(--accent); font-weight: 700; }
 
-/* Typing indicator */
 #typing-indicator { padding: 4px 16px; font-size: 12px; color: var(--text-dim); font-style: italic; min-height: 20px; }
 
-/* Reply indicator */
 #reply-indicator { padding: 6px 16px; background: var(--bg3); border-top: 1px solid var(--accent); display: none; font-size: 12px; color: var(--text-dim); }
 #reply-indicator.show { display: flex; align-items: center; gap: 8px; }
 #reply-indicator .cancel-reply { background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 16px; }
 
-/* Input area */
-#input-area { padding: 12px 16px; border-top: 1px solid var(--border); background: var(--bg2); display: flex; gap: 8px; }
-#input-area input { flex: 1; background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; color: var(--text); font-size: 14px; outline: none; }
+#input-area { padding: 12px 16px; border-top: 1px solid var(--border); background: var(--bg2); display: flex; gap: 8px; flex-wrap: wrap; }
+#input-area input { flex: 1; min-width: 200px; background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; color: var(--text); font-size: 14px; outline: none; }
 #input-area input:focus { border-color: var(--accent); }
 #input-area select { background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; padding: 8px; color: var(--text); font-size: 12px; }
 #input-area button { background: var(--accent); border: none; border-radius: 6px; padding: 10px 20px; color: #fff; font-weight: 600; cursor: pointer; }
 #input-area button:hover { opacity: 0.9; }
 
 /* Task panel */
-#task-panel { width: 300px; background: var(--bg2); border-left: 1px solid var(--border); display: none; flex-direction: column; overflow-y: auto; flex-shrink: 0; }
+#task-panel { width: 320px; background: var(--bg2); border-left: 1px solid var(--border); display: none; flex-direction: column; overflow-y: auto; flex-shrink: 0; }
 #task-panel.show { display: flex; }
 #task-panel h3 { padding: 12px 16px; font-size: 14px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
 #task-panel h3 button { background: var(--accent); border: none; border-radius: 4px; padding: 4px 8px; color: #fff; cursor: pointer; font-size: 11px; }
@@ -129,6 +138,8 @@ pre.code-block code { color: #e1e1e1; }
 .task-item:hover { background: var(--bg3); }
 .task-item .task-title { font-size: 13px; font-weight: 600; color: #fff; }
 .task-item .task-meta { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+.task-item .task-deps { font-size: 10px; color: var(--yellow); margin-top: 2px; }
+.task-item .task-deadline { font-size: 10px; color: var(--orange); margin-top: 2px; }
 .task-status { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: 600; text-transform: uppercase; }
 .task-status.pending { background: var(--gray); color: #fff; }
 .task-status.in_progress { background: var(--blue); color: #fff; }
@@ -140,14 +151,17 @@ pre.code-block code { color: #e1e1e1; }
 .task-priority.medium { background: var(--blue); color: #fff; }
 .task-priority.low { background: var(--gray); color: #fff; }
 
-/* Task create form */
 #task-form { display: none; padding: 12px 16px; border-bottom: 1px solid var(--border); }
 #task-form.show { display: block; }
 #task-form input, #task-form select, #task-form textarea { width: 100%; background: var(--bg3); border: 1px solid var(--border); border-radius: 4px; padding: 6px 8px; color: var(--text); font-size: 12px; margin-bottom: 6px; font-family: inherit; }
 #task-form textarea { resize: vertical; min-height: 40px; }
 #task-form button { background: var(--accent); border: none; border-radius: 4px; padding: 6px 12px; color: #fff; cursor: pointer; font-size: 12px; width: 100%; }
 
-/* Memory panel */
+/* Task filter tabs */
+.task-filters { display: flex; gap: 4px; padding: 8px 16px; border-bottom: 1px solid var(--border); }
+.task-filter-btn { background: none; border: 1px solid var(--border); border-radius: 4px; padding: 3px 8px; color: var(--text-dim); cursor: pointer; font-size: 11px; }
+.task-filter-btn:hover, .task-filter-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
 #memory-panel { border-top: 1px solid var(--border); }
 #memory-panel h3 { padding: 8px 16px; font-size: 12px; color: var(--text-dim); text-transform: uppercase; cursor: pointer; }
 #memory-panel h3:hover { color: #fff; }
@@ -158,9 +172,8 @@ pre.code-block code { color: #e1e1e1; }
 .mem-item .mem-val { flex: 1; word-break: break-word; }
 .mem-item .mem-by { color: var(--text-dim); font-size: 10px; }
 
-/* Mobile */
 @media (max-width: 768px) {
-  #sidebar { position: fixed; left: -260px; top: 0; bottom: 0; z-index: 50; transition: left 0.2s; }
+  #sidebar { position: fixed; left: -280px; top: 0; bottom: 0; z-index: 50; transition: left 0.2s; }
   #sidebar.open { left: 0; }
   #hamburger { display: block; }
   #header { padding-left: 48px; }
@@ -191,6 +204,7 @@ pre.code-block code { color: #e1e1e1; }
     <button onclick="showSummary()">📋 Summary</button>
     <button onclick="toggleTasks()">📝 Tasks</button>
   </div>
+  <div id="topic-bar">📌 <span class="topic-text" id="topic-text"></span></div>
   <div id="search-bar"><input type="text" id="search-input" placeholder="Search messages..." oninput="searchMessages()"></div>
   <div id="pinned-area"><div class="pinned-label">📌 Pinned</div><div id="pinned-list"></div></div>
   <div id="messages"></div>
@@ -204,6 +218,17 @@ pre.code-block code { color: #e1e1e1; }
       <option value="code_review">code</option>
       <option value="handoff">handoff</option>
       <option value="approval">approval</option>
+      <option value="request">request</option>
+      <option value="response">response</option>
+      <option value="broadcast">broadcast</option>
+      <option value="heartbeat">heartbeat</option>
+      <option value="coordination">coordination</option>
+    </select>
+    <select id="msg-priority">
+      <option value="normal">normal</option>
+      <option value="low">low</option>
+      <option value="high">high</option>
+      <option value="urgent">🔴 urgent</option>
     </select>
     <input type="text" id="msg-input" placeholder="Type a message..." autocomplete="off">
     <button id="send-btn">Send</button>
@@ -211,10 +236,17 @@ pre.code-block code { color: #e1e1e1; }
 </div>
 <div id="task-panel">
   <h3>📝 Tasks <button onclick="toggleTaskForm()">+ New</button></h3>
+  <div class="task-filters">
+    <button class="task-filter-btn active" data-filter="all" onclick="filterTasks('all',this)">All</button>
+    <button class="task-filter-btn" data-filter="ready" onclick="filterTasks('ready',this)">Ready</button>
+    <button class="task-filter-btn" data-filter="blocked" onclick="filterTasks('blocked',this)">Blocked</button>
+  </div>
   <div id="task-form">
     <input type="text" id="task-title" placeholder="Task title">
     <textarea id="task-desc" placeholder="Description (optional)"></textarea>
     <input type="text" id="task-assign" placeholder="Assign to (agent id)">
+    <input type="text" id="task-deps" placeholder="Depends on (task IDs, comma-separated)">
+    <input type="number" id="task-deadline" placeholder="Deadline (timestamp, optional)">
     <select id="task-priority"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option><option value="urgent">Urgent</option></select>
     <button onclick="createTask()">Create Task</button>
   </div>
@@ -229,7 +261,7 @@ let channel = 'general';
 let sse = null;
 const seenIds = new Set();
 let replyTo = null;
-let typingTimeout = null;
+let taskFilter = 'all';
 const msgCache = new Map();
 
 let myName = localStorage.getItem('agent-comms-name');
@@ -239,7 +271,7 @@ if (!myName) {
 }
 const myId = 'human-' + myName.toLowerCase().replace(/[^a-z0-9]/g, '');
 
-const avatarMap = { woozy: '🎱', rusty: '🤖' };
+const avatarMap = { woozy: '🎱', rusty: '🤖', system: '⚙️' };
 const getAvatar = (id) => avatarMap[id] || (id.startsWith('human') ? '👤' : '🤖');
 
 function relativeTime(ts) {
@@ -251,7 +283,6 @@ function relativeTime(ts) {
 }
 function fullTime(ts) { return new Date(ts).toLocaleString(); }
 
-// Web Audio beep for notifications
 let audioCtx = null;
 function playBeep() {
   try {
@@ -267,19 +298,30 @@ function playBeep() {
   } catch {}
 }
 
-// Format content: code blocks, mentions
+function playUrgentBeep() {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    [800, 1000, 800].forEach((freq, i) => {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.frequency.value = freq;
+      gain.gain.value = 0.15;
+      osc.start(audioCtx.currentTime + i * 0.15);
+      osc.stop(audioCtx.currentTime + i * 0.15 + 0.1);
+    });
+  } catch {}
+}
+
 function formatContent(content) {
   let html = esc(content);
-  // Code blocks
-  html = html.replace(/\`\`\`(\\w*?)\\n([\\s\\S]*?)\`\`\`/g, function(_, lang, code) {
+  html = html.replace(/\\\`\\\`\\\`(\\w*?)\\n([\\s\\S]*?)\\\`\\\`\\\`/g, function(_, lang, code) {
     const langLabel = lang ? '<div class="code-lang">' + lang + '</div>' : '';
     return langLabel + '<pre class="code-block"><code>' + code + '</code></pre>';
   });
-  // Inline code
-  html = html.replace(/\`([^\`]+)\`/g, '<code style="background:var(--bg3);padding:1px 4px;border-radius:3px;font-size:13px;">$1</code>');
-  // @mentions
+  html = html.replace(/\\\`([^\\\`]+)\\\`/g, '<code style="background:var(--bg3);padding:1px 4px;border-radius:3px;font-size:13px;">$1</code>');
   html = html.replace(/@([a-zA-Z0-9_-]+)/g, '<span class="mention">@$1</span>');
-  // Bold **text**
   html = html.replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>');
   return html;
 }
@@ -291,7 +333,22 @@ async function init() {
   connectSSE();
   loadTasks();
   loadMemory();
+  loadChannelTopic();
   document.getElementById('header').querySelector('.title').textContent = '# ' + channel + '  —  ' + myName;
+}
+
+async function loadChannelTopic() {
+  try {
+    const res = await fetch('/channels/' + channel + '/summary', { headers: H });
+    const data = await res.json();
+    const topicBar = document.getElementById('topic-bar');
+    if (data.topic) {
+      document.getElementById('topic-text').textContent = data.topic;
+      topicBar.classList.add('show');
+    } else {
+      topicBar.classList.remove('show');
+    }
+  } catch {}
 }
 
 async function loadAgents() {
@@ -299,8 +356,10 @@ async function loadAgents() {
   const agents = await res.json();
   const el = document.getElementById('agent-list');
   el.innerHTML = agents.map(a => {
-    const online = a.last_seen_at && (Date.now() - a.last_seen_at < 60000);
-    return '<div class="agent-item"><span class="dot ' + (online ? 'online' : 'offline') + '"></span><span class="avatar">' + getAvatar(a.id) + '</span><span class="name">' + esc(a.name || a.id) + '</span><span class="platform">' + esc(a.platform || '') + '</span></div>';
+    const status = a.status || (a.online ? 'online' : 'offline');
+    const caps = a.capabilities ? a.capabilities.map(c => '<span class="cap-badge">' + esc(c) + '</span>').join('') : '';
+    const loadBadge = a.current_load > 0 ? '<span class="load-badge">' + a.current_load + ' tasks</span>' : '';
+    return '<div class="agent-item"><span class="dot ' + status + '"></span><span class="avatar">' + getAvatar(a.id) + '</span><span class="name">' + esc(a.name || a.id) + '</span>' + loadBadge + '<span class="platform">' + esc(a.platform || '') + '</span>' + (caps ? '<div class="cap-badges">' + caps + '</div>' : '') + '</div>';
   }).join('');
 }
 
@@ -318,7 +377,7 @@ async function loadMessages() {
 
 function appendMsg(m) {
   if (m.channel && m.channel !== channel) return;
-  if (m.type === 'connected' || m.type === 'typing') return;
+  if (m.type === 'connected' || m.type === 'typing' || m.type === 'barrier_cleared') return;
   if (m.id && seenIds.has(m.id)) return;
   if (m.id) seenIds.add(m.id);
   if (m.id) msgCache.set(m.id, m);
@@ -328,11 +387,16 @@ function appendMsg(m) {
   div.id = 'msg-' + m.id;
   const typeClass = m.type && m.type !== 'chat' ? ' type-' + m.type : '';
   const isReply = m.reply_to ? ' reply' : '';
-  div.className = 'msg' + typeClass + isReply;
+  const priorityClass = (m.priority === 'urgent' || m.priority === 'high') ? ' priority-' + m.priority : '';
+  div.className = 'msg' + typeClass + isReply + priorityClass;
 
   const badge = m.type && m.type !== 'chat' ? '<span class="badge">' + esc(m.type) + '</span>' : '';
   const receipt = m.read_at ? '<span class="receipt read">✓✓</span>' : '<span class="receipt sent">✓</span>';
   const ts = m.created_at;
+
+  let priorityIndicator = '';
+  if (m.priority === 'urgent') priorityIndicator = '<span class="priority-indicator" style="color:var(--red)">🔴</span>';
+  else if (m.priority === 'high') priorityIndicator = '<span class="priority-indicator" style="color:var(--orange)">🟠</span>';
 
   let replyRef = '';
   if (m.reply_to) {
@@ -358,11 +422,10 @@ function appendMsg(m) {
     contentHtml = formatContent(m.content || '');
   }
 
-  div.innerHTML = '<span class="avatar">' + getAvatar(m.from_agent) + '</span><div class="body">' + replyRef + '<div class="meta"><span class="sender">' + esc(m.from_agent) + '</span>' + badge + '<span class="time" title="' + fullTime(ts) + '">' + relativeTime(ts) + '</span>' + receipt + '</div><div class="content">' + contentHtml + '</div></div><div class="msg-actions"><button onclick="setReply(\\'' + m.id + '\\',\\'' + esc(m.from_agent) + '\\')">↩</button><button onclick="pinMsg(\\'' + m.id + '\\')">' + (m.pinned ? '📌' : '📌') + '</button></div>';
+  div.innerHTML = '<span class="avatar">' + getAvatar(m.from_agent) + '</span><div class="body">' + replyRef + '<div class="meta"><span class="sender">' + esc(m.from_agent) + '</span>' + badge + priorityIndicator + '<span class="time" title="' + fullTime(ts) + '">' + relativeTime(ts) + '</span>' + receipt + '</div><div class="content">' + contentHtml + '</div></div><div class="msg-actions"><button onclick="setReply(\\'' + m.id + '\\',\\'' + esc(m.from_agent) + '\\')">↩</button><button onclick="pinMsg(\\'' + m.id + '\\')">' + (m.pinned ? '📌' : '📌') + '</button></div>';
   el.appendChild(div);
   el.scrollTop = el.scrollHeight;
 
-  // Auto-ack as read
   if (m.from_agent !== myId && !m.read_at) {
     fetch('/messages/' + m.id + '/ack', { method: 'POST', headers: H, body: JSON.stringify({ status: 'read' }) }).catch(() => {});
   }
@@ -373,7 +436,6 @@ function scrollToMsg(id) {
   if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.style.background = 'var(--bg3)'; setTimeout(() => el.style.background = '', 1500); }
 }
 
-// Reply
 function setReply(id, name) {
   replyTo = id;
   document.getElementById('reply-to-name').textContent = name;
@@ -385,7 +447,6 @@ function cancelReply() {
   document.getElementById('reply-indicator').classList.remove('show');
 }
 
-// Pin
 async function pinMsg(id) {
   await fetch('/messages/' + id + '/pin', { method: 'POST', headers: H, body: JSON.stringify({ pinned: true }) });
   loadPinned();
@@ -402,7 +463,6 @@ async function loadPinned() {
   list.innerHTML = pinned.map(m => '<div class="pinned-msg"><span class="pin-icon">📌</span><b>' + esc(m.from_agent) + ':</b> ' + esc((m.content || '').slice(0, 80)) + '</div>').join('');
 }
 
-// Search
 function toggleSearch() { document.getElementById('search-bar').classList.toggle('show'); }
 let searchDebounce = null;
 function searchMessages() {
@@ -419,12 +479,12 @@ function searchMessages() {
   }, 300);
 }
 
-// Summary
 async function showSummary() {
   const res = await fetch('/channels/' + channel + '/summary', { headers: H });
   const data = await res.json();
   const el = document.getElementById('summary-content');
-  el.innerHTML = data.summary.map(s => '<div class="summary-msg"><b>' + esc(s.from) + '</b> (' + relativeTime(s.time) + '): ' + esc(s.content) + '</div>').join('');
+  let topicHtml = data.topic ? '<div style="margin-bottom:12px;padding:8px;background:var(--bg3);border-radius:4px"><b>Topic:</b> ' + esc(data.topic) + '</div>' : '';
+  el.innerHTML = topicHtml + data.summary.map(s => '<div class="summary-msg"><b>' + esc(s.from) + '</b> (' + relativeTime(s.time) + '): ' + esc(s.content) + '</div>').join('');
   document.getElementById('summary-modal').style.display = 'block';
   document.getElementById('overlay').style.display = 'block';
 }
@@ -433,31 +493,53 @@ function closeSummary() {
   document.getElementById('overlay').style.display = 'none';
 }
 
-// Tasks
 function toggleTasks() { document.getElementById('task-panel').classList.toggle('show'); }
 function toggleTaskForm() { document.getElementById('task-form').classList.toggle('show'); }
 
 async function loadTasks() {
-  const res = await fetch('/tasks?channel=' + channel, { headers: H });
+  let url = '/tasks?channel=' + channel;
+  if (taskFilter === 'ready') url = '/tasks/ready';
+  else if (taskFilter === 'blocked') url = '/tasks/blocked';
+
+  const res = await fetch(url, { headers: H });
   const tasks = await res.json();
   const el = document.getElementById('task-list');
-  el.innerHTML = tasks.map(t => '<div class="task-item" onclick="cycleTaskStatus(\\'' + t.id + '\\',\\'' + t.status + '\\')"><div class="task-title">' + esc(t.title) + '</div><div class="task-meta"><span class="task-status ' + t.status + '">' + t.status + '</span><span class="task-priority ' + t.priority + '">' + t.priority + '</span> → ' + esc(t.assigned_to || 'unassigned') + '</div></div>').join('');
+  el.innerHTML = tasks.map(t => {
+    const depsHtml = t.depends_on ? '<div class="task-deps">⛓ Depends on: ' + esc(t.depends_on) + '</div>' : '';
+    const deadlineHtml = t.deadline ? '<div class="task-deadline">⏰ ' + fullTime(t.deadline) + '</div>' : '';
+    const blockingHtml = t.blocking_deps !== undefined ? '<div class="task-deps" style="color:var(--red)">🚫 ' + t.blocking_deps + '/' + t.total_deps + ' deps blocking</div>' : '';
+    return '<div class="task-item" onclick="cycleTaskStatus(\\'' + t.id + '\\',\\'' + t.status + '\\')"><div class="task-title">' + esc(t.title) + '</div><div class="task-meta"><span class="task-status ' + t.status + '">' + t.status + '</span><span class="task-priority ' + t.priority + '">' + t.priority + '</span> → ' + esc(t.assigned_to || 'unassigned') + '</div>' + depsHtml + deadlineHtml + blockingHtml + '</div>';
+  }).join('') || '<div style="padding:16px;color:var(--text-dim);font-size:13px">No tasks</div>';
+}
+
+function filterTasks(filter, btn) {
+  taskFilter = filter;
+  document.querySelectorAll('.task-filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  loadTasks();
 }
 
 async function createTask() {
   const title = document.getElementById('task-title').value.trim();
   if (!title) return;
-  await fetch('/tasks', { method: 'POST', headers: H, body: JSON.stringify({
+  const deps = document.getElementById('task-deps').value.trim();
+  const deadline = document.getElementById('task-deadline').value.trim();
+  const body = {
     title,
     description: document.getElementById('task-desc').value.trim() || undefined,
     assigned_to: document.getElementById('task-assign').value.trim() || undefined,
     created_by: myId,
     priority: document.getElementById('task-priority').value,
-    channel
-  })});
+    channel,
+    depends_on: deps ? deps.split(',').map(s => s.trim()) : undefined,
+    deadline: deadline ? Number(deadline) : undefined,
+  };
+  await fetch('/tasks', { method: 'POST', headers: H, body: JSON.stringify(body) });
   document.getElementById('task-title').value = '';
   document.getElementById('task-desc').value = '';
   document.getElementById('task-assign').value = '';
+  document.getElementById('task-deps').value = '';
+  document.getElementById('task-deadline').value = '';
   toggleTaskForm();
   loadTasks();
 }
@@ -469,7 +551,6 @@ async function cycleTaskStatus(id, current) {
   loadTasks();
 }
 
-// Memory
 async function loadMemory() {
   const res = await fetch('/memory', { headers: H });
   const items = await res.json();
@@ -481,7 +562,6 @@ function toggleMemory() {
   loadMemory();
 }
 
-// Typing indicator
 function sendTyping() {
   fetch('/agents/' + myId + '/typing', { method: 'POST', headers: H }).catch(() => {});
 }
@@ -491,17 +571,22 @@ let lastPollTime = 0;
 function connectSSE() {
   if (sse) sse.close();
   sse = new EventSource('/stream?agent=' + myId + '&key=' + API_KEY);
-  sse.addEventListener('message', (e) => {
+
+  const handleMsg = (e) => {
     try {
       const m = JSON.parse(e.data);
-      if (m.type === 'typing') {
-        showTyping(m.agent);
-        return;
-      }
+      if (m.type === 'typing') { showTyping(m.agent); return; }
+      if (m.type === 'barrier_cleared') { loadTasks(); return; }
       appendMsg(m);
-      if (m.from_agent !== myId) playBeep();
+      if (m.from_agent !== myId) {
+        if (m.priority === 'urgent') playUrgentBeep();
+        else playBeep();
+      }
     } catch {}
-  });
+  };
+
+  sse.addEventListener('message', handleMsg);
+  sse.addEventListener('urgent', handleMsg);
   sse.addEventListener('system', () => {});
   sse.onerror = () => { sse.close(); sse = null; setTimeout(connectSSE, 3000); };
 }
@@ -525,7 +610,6 @@ setInterval(pollNew, 3000);
 
 function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
 
-// Channel switching
 document.querySelectorAll('.ch-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.ch-btn').forEach(b => b.classList.remove('active'));
@@ -534,23 +618,24 @@ document.querySelectorAll('.ch-btn').forEach(btn => {
     document.getElementById('header').querySelector('.title').textContent = '# ' + channel + '  —  ' + myName;
     loadMessages();
     loadTasks();
+    loadChannelTopic();
   });
 });
 
-// Send message
 async function sendMsg() {
   const input = document.getElementById('msg-input');
   const text = input.value.trim();
   if (!text) return;
   const type = document.getElementById('msg-type').value;
-  const body = { from_agent: myId, channel, type, content: text };
+  const priority = document.getElementById('msg-priority').value;
+  const body = { from_agent: myId, channel, type, content: text, priority };
   if (replyTo) body.reply_to = replyTo;
   const res2 = await fetch('/messages', { method: 'POST', headers: H, body: JSON.stringify(body) });
   const result = await res2.json();
   input.value = '';
   cancelReply();
   if (result.message) {
-    appendMsg({ id: result.message.id, from_agent: myId, channel, type, content: text, created_at: result.message.created_at, reply_to: replyTo });
+    appendMsg({ id: result.message.id, from_agent: myId, channel, type, content: text, created_at: result.message.created_at, reply_to: replyTo, priority });
   }
 }
 
@@ -560,12 +645,10 @@ document.getElementById('msg-input').addEventListener('keydown', (e) => {
   else sendTyping();
 });
 
-// Hamburger
 document.getElementById('hamburger').addEventListener('click', () => {
   document.getElementById('sidebar').classList.toggle('open');
 });
 
-// Update relative times every 30s
 setInterval(() => {
   document.querySelectorAll('.msg .time').forEach(el => {
     const ts = el.getAttribute('title');
